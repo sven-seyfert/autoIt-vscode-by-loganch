@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Output colors not showing due to other extensions (e.g., Github Copilot)
 - Icons missing for some Const and Enum variables in the outline/Symbol search
 - Detection of nested Regions
+- outputCodePage setting not working
 
 ## [1.0.12] - 2023-09-26
 
