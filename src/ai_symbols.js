@@ -75,36 +75,30 @@ const generateFunctionSymbol = (functionName, document, text, startingLineNumber
  * @returns {number} - The end index of the region.
  */
 const findRegionEndIndex = (documentText, startIndex) => {
-  const regionEndPattern = new RegExp(`#EndRegion\\s*$`);
-
+  const regionDelimiterPattern = /#(Region|EndRegion)(?:\s|$)/g;
   let nestingLevel = 1;
-  let currentIndex = startIndex;
-  let endIndex = -1;
-  let lastEndIndex = startIndex;
+  regionDelimiterPattern.lastIndex = startIndex;
 
-  while (currentIndex < documentText.length) {
-    const nextStartIndex = documentText.indexOf('#Region', currentIndex);
-    const nextEndIndex = documentText.indexOf('#EndRegion', currentIndex);
-
-    if (nextStartIndex !== -1 && (nextStartIndex < nextEndIndex || nextEndIndex === -1)) {
+  let match;
+  for (
+    match = regionDelimiterPattern.exec(documentText);
+    match !== null;
+    match = regionDelimiterPattern.exec(documentText)
+  ) {
+    if (match[1] === 'Region') {
+      // Increase nesting level when entering a new region
       nestingLevel++;
-      currentIndex = nextStartIndex + '#Region'.length;
-    } else if (nextEndIndex !== -1) {
-      if (regionEndPattern.test(documentText.slice(nextEndIndex))) {
-        if (nestingLevel === 1) {
-          endIndex = nextEndIndex;
-          break;
-        }
-        nestingLevel--;
-      }
-      lastEndIndex = nextEndIndex;
-      currentIndex = nextEndIndex + '#EndRegion'.length;
     } else {
-      break;
+      // Decrease nesting level when exiting a region
+      nestingLevel--;
+      if (nestingLevel === 0) {
+        // If we're back to the original nesting level, we've found our EndRegion
+        return match.index;
+      }
     }
   }
 
-  return endIndex === -1 ? lastEndIndex : endIndex;
+  return documentText.length;
 };
 
 /**
