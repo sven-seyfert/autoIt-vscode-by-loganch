@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Command to remove Debug to Console and MsgBox lines added by the extension
 - Commands to add and remove debug Trace lines
+- Refined syntax check, with ability to set options through `#AutoIt3Wrapper_AU3Check_Parameters`
 
 ### Changed
 
