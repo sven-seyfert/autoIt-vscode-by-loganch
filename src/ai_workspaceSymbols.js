@@ -3,6 +3,11 @@ import { provideDocumentSymbols } from './ai_symbols';
 
 let symbolsCache = [];
 
+/**
+ * Fetches symbols for all AutoIt scripts in the workspace.
+ *
+ * @returns {Promise<Array>} A promise that resolves to an array of document symbols.
+ */
 async function getWorkspaceSymbols() {
   try {
     const workspaceScripts = await workspace.findFiles('**/*.{au3,a3x}');
@@ -21,6 +26,11 @@ async function getWorkspaceSymbols() {
   }
 }
 
+/**
+ * Provides symbols for the entire workspace, using a cached version if available.
+ *
+ * @returns {Promise<Array>} A promise that resolves to an array of workspace symbols.
+ */
 async function provideWorkspaceSymbols() {
   if (symbolsCache.length === 0) {
     symbolsCache = await getWorkspaceSymbols();
