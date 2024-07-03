@@ -4,18 +4,19 @@ import { provideDocumentSymbols } from './ai_symbols';
 let symbolsCache = [];
 
 async function getWorkspaceSymbols() {
-  const workspaceScripts = await workspace.findFiles('**/*.{au3,a3x}');
-
-  const scriptPromises = workspaceScripts.map(async file => {
-    const thisDocument = await workspace.openTextDocument(file);
-    return provideDocumentSymbols(thisDocument);
-  });
-
   try {
-    const symbols = await Promise.all(scriptPromises);
+    const workspaceScripts = await workspace.findFiles('**/*.{au3,a3x}');
+
+    const symbols = await Promise.all(
+      workspaceScripts.map(async file => {
+        const document = await workspace.openTextDocument(file);
+        return provideDocumentSymbols(document);
+      }),
+    );
+
     return symbols.flat();
   } catch (error) {
-    window.showErrorMessage(error);
+    window.showErrorMessage(error.message || 'Error fetching workspace symbols');
     return null;
   }
 }
