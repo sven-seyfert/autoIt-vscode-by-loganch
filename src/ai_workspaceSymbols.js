@@ -28,15 +28,14 @@ async function provideWorkspaceSymbols() {
 }
 
 const watcher = workspace.createFileSystemWatcher('**/*.{au3,a3x}');
-watcher.onDidChange(() => {
+
+const resetCache = () => {
   symbolsCache = [];
-});
-watcher.onDidCreate(() => {
-  symbolsCache = [];
-});
-watcher.onDidDelete(() => {
-  symbolsCache = [];
-});
+};
+
+watcher.onDidChange(resetCache);
+watcher.onDidCreate(resetCache);
+watcher.onDidDelete(resetCache);
 
 const workspaceSymbolProvider = languages.registerWorkspaceSymbolProvider({
   provideWorkspaceSymbols,
