@@ -669,7 +669,7 @@ function procRunner(cmdPath, args = [], bAiOutReuse = true) {
 
   runner.stdout.on('data', data => {
     try {
-      const output = (config.isCodePage ? decode(data, config.outputCodePage) : data).toString();
+      const output = (config.outputCodePage ? decode(data, config.outputCodePage) : data).toString();
       aiOut.append(output);
     } catch (er) {
       console.error(er);
@@ -678,7 +678,7 @@ function procRunner(cmdPath, args = [], bAiOutReuse = true) {
 
   runner.stderr.on('data', data => {
     try {
-      const output = (config.isCodePage ? decode(data, config.outputCodePage) : data).toString();
+      const output = (config.outputCodePage ? decode(data, config.outputCodePage) : data).toString();
       aiOut.append(output);
     } catch (er) {
       console.error(er);
