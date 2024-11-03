@@ -433,13 +433,9 @@ const AiOut = ({ id, aiOutProcess }) => {
   const prefixId = `#${id}:${spacer}`;
   const prefixEmpty = ''.padStart(prefixId.length, spacer);
   const hotkeyFailedMsg = [
-    [
-      /!!?>Failed Setting Hotkey\(s\)(?::|...)[\r\n]*/gi,
-      /(?:false)?--> SetHotKey (?:\(\) )?Restart failed(?:,|. -->) SetHotKey (?:\(\) )?Stop failed\.[\r\n]*/gi,
-    ],
-    [
-      /(!!?>Failed Setting Hotkey\(s\)(?::|...)[\r\n]*)?(?:false)?--> SetHotKey (?:\(\) )?Restart failed(?:,|. -->) SetHotKey (?:\(\) )?Stop failed\.[\r\n]*/gi,
-    ],
+    /!!?>Failed Setting Hotkey\(s\)(?::|...)[\r\n]*?/gi,
+    /(?:false)?--> SetHotKey (?:\(\) )?Restart failed(?:,|. -->) SetHotKey (?:\(\) )?Stop failed\.[\r\n]*/gi,
+    /(!!?>Failed Setting Hotkey\(s\)(?::|...)[\r\n]*?)?(?:false)?--> SetHotKey (?:\(\) )?Restart failed(?:,|. -->) SetHotKey (?:\(\) )?Stop failed\.[\r\n]*/gi,
   ];
 
   const outputText = (aiOut, prop, lines) => {
@@ -525,35 +521,30 @@ const AiOut = ({ id, aiOutProcess }) => {
       clearTimeout(prevLineTimer);
       const lines = prop === 'append' ? text.split(/\r?\n/) : [text];
       lines[0] = prevLine + lines[0];
-      for (let i = 0; i < lines.length; i += 1) {
+      for (let i = 0; i < lines.length; i++) {
         if (hotkeyFailedMsgFound) continue;
-        for (let r = 0; r < hotkeyFailedMsg.length; r += 1) {
-          const line = lines[i].replace(hotkeyFailedMsg[r][0], '');
+        for (let r = 0; r < hotkeyFailedMsg.length; r++) {
+          const line = lines[i].replace(hotkeyFailedMsg[r], '');
           if (line === lines[i]) continue;
+          if (hotkeyFailedMsgFound) lines.splice(i, 1);
+          else {
+            aWrapperHotkey.reset(id);
+            lines[i] = `+>Setting Hotkeys...--> Press `;
+            if (keybindings[`${commandsPrefix}restartScript`])
+              lines[i] += `${keybindings[`${commandsPrefix}restartScript`]} to Restart`;
 
-          hotkeyFailedMsg[r].shift();
-          if (hotkeyFailedMsg[r].length) {
-            lines.splice((i -= 1), 1);
-            break;
+            if (
+              keybindings[`${commandsPrefix}killScript`] ||
+              keybindings[`${commandsPrefix}killScriptOpened`]
+            ) {
+              if (keybindings[`${commandsPrefix}restartScript`]) lines[i] += ` or `;
+
+              lines[i] += `${keybindings[`${commandsPrefix}killScript`] ||
+                keybindings[`${commandsPrefix}killScriptOpened`]} to Stop.`;
+            }
+            hotkeyFailedMsgFound = true;
           }
-
-          aWrapperHotkey.reset(id);
-          // lines.splice(i--, 1);
-          lines[i] = `+>Setting Hotkeys...--> Press `;
-          if (keybindings[`${commandsPrefix}restartScript`])
-            lines[i] += `${keybindings[`${commandsPrefix}restartScript`]} to Restart`;
-
-          if (
-            keybindings[`${commandsPrefix}killScript`] ||
-            keybindings[`${commandsPrefix}killScriptOpened`]
-          ) {
-            if (keybindings[`${commandsPrefix}restartScript`]) lines[i] += ` or `;
-
-            lines[i] += `${keybindings[`${commandsPrefix}killScript`] ||
-              keybindings[`${commandsPrefix}killScriptOpened`]} to Stop.`;
-          }
-          hotkeyFailedMsgFound = true;
-          break;
+          if (++i >= lines.length) break;
         }
       }
       prevLine = !isFlush && prop === 'append' ? lines[lines.length - 1] : '';
