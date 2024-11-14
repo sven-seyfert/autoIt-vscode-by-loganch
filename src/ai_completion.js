@@ -199,6 +199,7 @@ const completionFeature = languages.registerCompletionItemProvider(
   { provideCompletionItems },
   '.',
   '$',
+  '#',
 );
 
 export default completionFeature;

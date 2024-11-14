@@ -68,6 +68,12 @@ import { hovers as udfWinNet } from '../signatures/udf_winnet';
 import { hovers as udfWord } from '../signatures/udf_word';
 import { hovers as udfDebug } from '../signatures/udf_debug';
 import { hovers as InetConstants } from '../completions/constantsInet';
+import {
+  wrapperDirectivesHovers,
+  au3StripperDirectivesHovers,
+  au3CheckDirectivesHovers,
+  versioningDirectivesHovers,
+} from '../completions/directives';
 
 const hoverImports = {
   ...ai_functions,
@@ -140,6 +146,10 @@ const hoverImports = {
   ...udfWord,
   ...udfDebug,
   ...InetConstants,
+  ...wrapperDirectivesHovers,
+  ...au3StripperDirectivesHovers,
+  ...au3CheckDirectivesHovers,
+  ...versioningDirectivesHovers,
 };
 
 const hovers = Object.fromEntries(

@@ -93,6 +93,11 @@ import WinAPITheme from './udf_WinAPITheme';
 import { completions as WinNet } from '../signatures/udf_winnet';
 import { completions as Word } from '../signatures/udf_word';
 import InetConstants from './constantsInet';
+import wrapperDirectivesCompletionItems, {
+  au3StripperDirectivesCompletionItems,
+  au3CheckDirectivesCompletionItems,
+  versioningDirectivesCompletionItems,
+} from './directives';
 
 const completions = [
   ...AVI,
@@ -189,6 +194,10 @@ const completions = [
   ...WinNet,
   ...Word,
   ...InetConstants,
+  ...wrapperDirectivesCompletionItems,
+  ...au3StripperDirectivesCompletionItems,
+  ...au3CheckDirectivesCompletionItems,
+  ...versioningDirectivesCompletionItems,
 ];
 
 export default completions;
