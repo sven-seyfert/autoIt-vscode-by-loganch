@@ -41,6 +41,12 @@ const runCheckProcess = document => {
       '-w',
       7, // warn when passing Const or expression on ByRef param(s) (on)
     ];
+
+    // Add -I for each include path
+    config.includePaths.forEach(path => {
+      params.push('-I', path);
+    });
+
     // find last occurrence of #AutoIt3Wrapper_AU3Check_Parameters=
     const match = [
       ...document.getText().matchAll(/^\s*#AutoIt3Wrapper_AU3Check_Parameters=.*$/gm),
