@@ -1,6 +1,7 @@
 import { workspace, Uri, FileType, window } from 'vscode';
 import fs from 'fs';
 import path from 'path';
+import { exec } from 'child_process';
 import { showErrorMessage } from './ai_showMessage';
 
 const meta = require('../package.json');
@@ -315,10 +316,48 @@ function getPaths() {
   return undefined;
 }
 
+function updateIncludePaths() {
+  const { includePaths } = conf.data;
+  if (Array.isArray(includePaths)) {
+    for (let j = 0; j < includePaths.length; j++) {
+      let sPath = (typeof includePaths[j] === 'string' ? includePaths[j] : '').trim();
+      if (sPath === '') sPath = 'Include';
+      if (conf.defaultPaths.includePaths[j] === undefined)
+        conf.defaultPaths.includePaths[j] = Object.assign(
+          { fullPath: '' },
+          conf.defaultPaths.includePaths[0].check,
+        );
+      updateFullPath(sPath, conf.defaultPaths.includePaths[j], `includePaths[${j}]`);
+    }
+
+    // Update the registry key
+    const includePathsString = includePaths.join(';');
+    exec(
+      `reg add "HKCU\\Software\\AutoIt v3\\Autoit" /v Include /t REG_SZ /d "${includePathsString}" /f`,
+      (error, stdout, stderr) => {
+        if (error) {
+          window.showErrorMessage(`Error updating registry: ${error.message}`);
+          return;
+        }
+        if (stderr) {
+          window.showErrorMessage(`Registry stderr: ${stderr}`);
+          return;
+        }
+        window.showInformationMessage(`Registry updated: ${stdout}`);
+      },
+    );
+  }
+}
+
 workspace.onDidChangeConfiguration(({ affectsConfiguration }) => {
   if (bNoEvents || !affectsConfiguration('autoit')) return;
 
   conf.data = workspace.getConfiguration('autoit');
+
+  if (affectsConfiguration('autoit.includePaths')) {
+    updateIncludePaths();
+  }
+
   listeners.forEach(listener => {
     try {
       listener();
