@@ -16,6 +16,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Changes to autoit.includePaths setting now gets written to Windows Registry
+
 ### Fixed
 
 - Go To Definition regression
@@ -23,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Icons missing for some Const and Enum variables in the outline/Symbol search
 - Detection of nested Regions
 - outputCodePage setting not working
+- Au3Check/Problems tab now works with includePaths setting
 
 ## [1.0.12] - 2023-09-26
 
