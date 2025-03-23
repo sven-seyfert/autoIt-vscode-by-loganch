@@ -56,17 +56,24 @@ export const parseAu3CheckOutput = (output, collection, documentURI) => {
 
   const matches = [...output.matchAll(OUTPUT_REGEXP)];
   matches.forEach(match => {
-    const { line, position, severity, scriptPath, description } = match.groups;
+    const { line, position, severity, description } = match.groups;
     const diagnosticRange = createDiagnosticRange(line, position);
     const diagnosticSeverity = getDiagnosticSeverity(severity);
 
     const diagnosticToAdd = new Diagnostic(diagnosticRange, description, diagnosticSeverity);
 
-    updateDiagnostics(diagnostics, scriptPath, diagnosticToAdd);
+    // The determined file path (scriptPath) from the AU3Check output will
+    // not be used, because AU3Check returns a wrong encoded string in case
+    // of special characters like german umlauts (ä, ü, ö) or spanish chars
+    // like "ñ" etc. This behavior will not be fixed soon for AU3Check, so
+    // the documentURI path is used instead, which is correct.
+    const file = documentURI.path.replace(/^\/([a-z]):/, '$1:').replace(/\//g, '\\');
+
+    updateDiagnostics(diagnostics, file, diagnosticToAdd);
   });
 
-  diagnostics.forEach((diagnosticArray, scriptPath) => {
-    collection.set(Uri.file(scriptPath), diagnosticArray);
+  diagnostics.forEach((diagnosticArray, file) => {
+    collection.set(Uri.file(file), diagnosticArray);
   });
 };
 
