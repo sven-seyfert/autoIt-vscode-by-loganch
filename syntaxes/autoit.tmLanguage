@@ -229,12 +229,19 @@
           </dict>
         </dict>
       </dict>
+
       <dict>
         <key>match</key>
-        <string>(?x:(?:0x\h+)|(?:-?(?:0|[1-9]\d*)(?:\.\d+)?(?:e[+-]?\d+)?))</string>
+        <string>(?x)
+          (?:0x\h+) |                  # Hex
+          (?:0b[01]+) |                # Binary
+          (?:-?(?:\d+\.?\d*|\.\d+))    # Decimal
+          (?:[eE][-+]?\d+)?            # Optional exponent
+        </string>
         <key>name</key>
         <string>constant.numeric.autoit</string>
       </dict>
+
       <dict>
         <key>match</key>
         <string>[-+*/&amp;]?=</string>
