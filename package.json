@@ -519,6 +519,7 @@
       }
     },
     "configurationDefaults": {
+      "[autoit]": { "editor.minimap.showRegionSectionHeaders": false },
       "editor.tokenColorCustomizations": {
         "textMateRules": [
           {
