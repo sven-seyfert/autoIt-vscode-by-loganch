@@ -1,26 +1,18 @@
 import { Diagnostic, DiagnosticSeverity, Range, Position, Uri } from 'vscode';
 
-
-const SEVERITY_MAP = {
-  warning: DiagnosticSeverity.Warning,
-  error: DiagnosticSeverity.Error
-};
-
-/** Regular expression to parse diagnostic entries */
-const OUTPUT_REGEXP = /"(?<scriptPath>.+)"\((?<line>\d+),(?<position>\d+)\)\s:\s(?<severity>warning|error):\s(?<description>.+)\r?$/gm;
-
-/** Regular expression to check for successful validation with no issues */
-const NO_ISSUES_REGEX = /^- 0 error\(s\), 0 warning\(s\)\r?$/m;
-
 /**
  * Returns the diagnostic severity based on the severity string.
  * @param {string} severityString - The severity string to convert to DiagnosticSeverity.
  * @returns {DiagnosticSeverity} - The DiagnosticSeverity based on the severity string.
  */
-export const getDiagnosticSeverity = (severityString) => {
-  return SEVERITY_MAP[severityString] || DiagnosticSeverity.Error;
+export const getDiagnosticSeverity = severityString => {
+  switch (severityString) {
+    case 'warning':
+      return DiagnosticSeverity.Warning;
+    default:
+      return DiagnosticSeverity.Error;
+  }
 };
-
 
 /**
  * Returns a diagnostic range for a given line and position.
@@ -29,11 +21,24 @@ export const getDiagnosticSeverity = (severityString) => {
  * @returns {Range} - The diagnostic range.
  */
 export const createDiagnosticRange = (line, position) => {
-  const lineNumber = parseInt(line, 10) - 1;
-  const columnNumber = parseInt(position, 10) - 1;
-  const startPosition = new Position(lineNumber, columnNumber);
-  return new Range(startPosition, startPosition);
+  const diagnosticPosition = new Position(parseInt(line, 10) - 1, parseInt(position, 10) - 1);
+
+  return new Range(diagnosticPosition, diagnosticPosition);
 };
+
+/**
+ * Adds a new diagnostic to a Map of diagnostics.
+ * @param {Map} diagnostics - The current diagnostics object.
+ * @param {string} scriptPath - The path of the script that the diagnostic is for.
+ * @param {Diagnostic} diagnosticToAdd - The new diagnostics object to add.
+ */
+export const updateDiagnostics = (diagnostics, scriptPath, diagnosticToAdd) => {
+  const diagnosticArray = diagnostics.get(scriptPath) || [];
+  diagnosticArray.push(diagnosticToAdd);
+  diagnostics.set(scriptPath, diagnosticArray);
+};
+
+const OUTPUT_REGEXP = /"(?<scriptPath>.+)"\((?<line>\d{1,4}),(?<position>\d{1,4})\)\s:\s(?<severity>warning|error):\s(?<description>.+)\r/gm;
 
 /**
  * Processes the results of AU3Check, identifies warnings and errors.
@@ -42,31 +47,26 @@ export const createDiagnosticRange = (line, position) => {
  * @param {Uri} documentURI - The URI of the document that was checked
  */
 export const parseAu3CheckOutput = (output, collection, documentURI) => {
-  if (NO_ISSUES_REGEX.test(output)) {
+  if (output.includes('- 0 error(s), 0 warning(s)')) {
     collection.delete(documentURI);
     return;
   }
 
   const diagnostics = new Map();
 
-  for (const match of output.matchAll(OUTPUT_REGEXP)) {
-    const { groups } = match;
-    if (!groups) continue;
+  const matches = [...output.matchAll(OUTPUT_REGEXP)];
+  matches.forEach(match => {
+    const { line, position, severity, scriptPath, description } = match.groups;
+    const diagnosticRange = createDiagnosticRange(line, position);
+    const diagnosticSeverity = getDiagnosticSeverity(severity);
 
-    const { line, position, severity, scriptPath, description } = groups;
-    const range = createDiagnosticRange(line, position);
-    const severityLevel = getDiagnosticSeverity(severity);
+    const diagnosticToAdd = new Diagnostic(diagnosticRange, description, diagnosticSeverity);
 
-    const diagnostic = new Diagnostic(range, description, severityLevel);
-    diagnostic.source = 'AU3Check';
+    updateDiagnostics(diagnostics, scriptPath, diagnosticToAdd);
+  });
 
-    const fileDiagnostics = diagnostics.get(scriptPath) || [];
-    fileDiagnostics.push(diagnostic);
-    diagnostics.set(scriptPath, fileDiagnostics);
-  }
-
-  diagnostics.forEach((fileDiagnostics, scriptPath) => {
-    collection.set(Uri.file(scriptPath), fileDiagnostics);
+  diagnostics.forEach((diagnosticArray, scriptPath) => {
+    collection.set(Uri.file(scriptPath), diagnosticArray);
   });
 };
 
