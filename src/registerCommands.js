@@ -3,13 +3,14 @@ import * as aiCommands from './ai_commands';
 import { commandsList, commandsPrefix } from './commandsList';
 
 export const registerCommands = ctx => {
-  for (let i = 0; i < commandsList.length; i += 1) {
-    const command = commandsList[i];
-    if (aiCommands[command])
+  const aiCommandsMap = new Map(Object.entries(aiCommands));
+
+  for (const command of commandsList) {
+    const commandFunc = aiCommandsMap.get(command);
+    if (typeof commandFunc === 'function') {
       ctx.subscriptions.push(
-        commands.registerCommand(commandsPrefix + command, aiCommands[command]),
+        commands.registerCommand(commandsPrefix + command, commandFunc)
       );
+    }
   }
 };
-
-export default 'registerCommands';
