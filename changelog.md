@@ -7,9 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.14] - 2025-07-30
+
 ### Changed
 
 - Node package update.
+- Sets `editor.minimap.showRegionSectionHeaders` to `false` for AutoIt scripts.
+- Optimized editor command registrations.
+- Enhancements to syntax definition file.
 
 ### Fixed
 
@@ -341,7 +346,8 @@ The IntelliSense release!
 - Added the ability to generate a debug MsgBox for a highlighted variable or macro with Ctrl+Shift+D.
 - Added icon, banner color and description for marketplace.
 
-[Unreleased]: https://github.com/loganch/AutoIt-VSCode/compare/v1.0.13...HEAD
+[Unreleased]: https://github.com/loganch/AutoIt-VSCode/compare/v1.0.14...HEAD
+[1.0.14]: https://github.com/loganch/AutoIt-VSCode/compare/v1.0.13...v1.0.14
 [1.0.13]: https://github.com/loganch/AutoIt-VSCode/compare/v1.0.12...v1.0.13
 [1.0.12]: https://github.com/loganch/AutoIt-VSCode/compare/v1.0.11...v1.0.12
 [1.0.11]: https://github.com/loganch/AutoIt-VSCode/compare/v1.0.10...v1.0.11
