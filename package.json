@@ -43,6 +43,7 @@
   },
   "license": "MIT",
   "main": "./dist/extension",
+  "activationEvents": [],
   "repository": {
     "type": "git",
     "url": "https://github.com/loganch/AutoIt-VSCode.git"
