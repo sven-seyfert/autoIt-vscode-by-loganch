@@ -11,6 +11,7 @@ import workspaceSymbolsFeature from './ai_workspaceSymbols';
 import goToDefinitionFeature from './ai_definition';
 
 import { registerCommands } from './registerCommands';
+import { formatterProvider } from './ai_formatter';
 import { parseAu3CheckOutput } from './diagnosticUtils';
 import conf from './ai_config';
 
@@ -129,6 +130,7 @@ export const activate = ctx => {
     signatureHoverProvider,
     workspaceSymbolsFeature,
     goToDefinitionFeature,
+    formatterProvider  // Add formatter to feature array
   ];
   ctx.subscriptions.push(...features);
 
