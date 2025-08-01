@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Added support for running the Format Document command via the Command Palette or hotkey using Tidy.exe on scripts, including automatic formatting on save.
+
 ## [1.0.14] - 2025-07-31
 
 ### Changed
