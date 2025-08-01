@@ -1,6 +1,6 @@
 #!/bin/bash
 
-version="1.0.13"
+version="1.0.14"
 username=$(whoami)
 vscodeExtensionFolder="C:/Users/$username/.vscode/extensions/damien.autoit-$version"
 targetFile="$vscodeExtensionFolder/dist/extension.js"
