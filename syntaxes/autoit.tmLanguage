@@ -215,9 +215,10 @@
           </dict>
         </array>
       </dict>
+
       <dict>
         <key>match</key>
-        <string>(\$)[a-zA-Z_][a-zA-Z0-9_]*</string>
+        <string>(\$)[a-zA-Z_]\w*</string>
         <key>name</key>
         <string>variable.other.autoit</string>
         <key>captures</key>
@@ -225,16 +226,23 @@
           <key>1</key>
           <dict>
             <key>name</key>
-            <string>punctuation.defintion.variable</string>
+            <string>punctuation.definition.variable.autoit</string>
           </dict>
         </dict>
       </dict>
+
       <dict>
         <key>match</key>
-        <string>(?x:(?:0x\h+)|(?:-?(?:0|[1-9]\d*)(?:\.\d+)?(?:e[+-]?\d+)?))</string>
+        <string>(?x)
+          (?:0x\h+) |                  # Hex
+          (?:0b[01]+) |                # Binary
+          (?:-?(?:\d+\.?\d*|\.\d+))    # Decimal
+          (?:[eE][-+]?\d+)?            # Optional exponent
+        </string>
         <key>name</key>
         <string>constant.numeric.autoit</string>
       </dict>
+
       <dict>
         <key>match</key>
         <string>[-+*/&amp;]?=</string>

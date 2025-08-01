@@ -10,6 +10,8 @@
     "no-param-reassign": "off",
     "no-restricted-syntax": "off",
     "no-bitwise": "off"
+  },
+  "languageOptions": {
+    "ecmaVersion": "latest"
   }
-
 }

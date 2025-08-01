@@ -56,7 +56,7 @@ export const parseAu3CheckOutput = (output, collection, documentURI) => {
 
   const matches = [...output.matchAll(OUTPUT_REGEXP)];
   matches.forEach(match => {
-    const { line, position, severity, scriptPath, description } = match.groups;
+    const { line, position, severity, description } = match.groups;
     const diagnosticRange = createDiagnosticRange(line, position);
     const diagnosticSeverity = getDiagnosticSeverity(severity);
 
