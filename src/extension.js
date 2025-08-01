@@ -98,6 +98,29 @@ const validateCheckPath = checkPath => {
 };
 
 /**
+ * Validates if the formatter can be used (Windows platform and valid paths)
+ * @returns {boolean} True if formatter should be enabled
+ */
+const validateFormatterPaths = () => {
+  // Only available on Windows
+  if (process.platform !== 'win32') {
+    return false;
+  }
+
+  // Check if required paths exist
+  const { aiPath, wrapperPath } = conf;
+  if (!aiPath || !wrapperPath) {
+    return false;
+  }
+
+  if (!existsSync(aiPath) || !existsSync(wrapperPath)) {
+    return false;
+  }
+
+  return true;
+};
+
+/**
  * Checks the AutoIt code in the given document and updates the diagnostic collection.
  * @param {TextDocument} document - The document to check.
  * @param {DiagnosticCollection} diagnosticCollection - The diagnostic collection to update.
@@ -130,8 +153,13 @@ export const activate = ctx => {
     signatureHoverProvider,
     workspaceSymbolsFeature,
     goToDefinitionFeature,
-    formatterProvider  // Add formatter to feature array
   ];
+
+  // Only register formatter on Windows with valid paths
+  if (validateFormatterPaths()) {
+    features.push(formatterProvider);
+  }
+
   ctx.subscriptions.push(...features);
 
   ctx.subscriptions.push(languages.setLanguageConfiguration('autoit', languageConfiguration));
