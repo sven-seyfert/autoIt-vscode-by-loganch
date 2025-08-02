@@ -27,69 +27,54 @@ import KEYWORDS from './keywords';
 import MACROS from './macros';
 import MAIN_FUNCTIONS from './mainFunctions';
 import SendKeys from './send_keys';
-import ArrayUDF from './udf_array';
-import Clipboard from './udf_clipboard';
-import ColorUDF from './udf_color';
-import Crypt from './udf_crypt';
-import DateUDF from './udf_date';
 import Debug from './udf_debug';
-import EventLog from './udf_eventlog';
-import Excel from './udf_excel';
-import FileUDF from './udf_file';
-import FTPEx from './udf_ftpex';
-import GDIPlus from './udf_gdiplus';
-import GuiAVI from './udf_guiAvi';
-import GuiButton from './udf_guiButton';
-import GuiComboBox from './udf_guiComboBox';
-import GuiComboBoxEx from './udf_guiComboBoxEx';
-import GuiDTP from './udf_guiDateTimePicker';
-import GuiEdit from './udf_guiEdit';
-import GuiHeader from './udf_guiHeader';
-import GuiImageList from './udf_guiImageList';
-import GuiIPAddress from './udf_guiIPAddress';
-import GuiListBox from './udf_guiListBox';
-import GuiListView from './udf_guiListView';
-import GuiMenu from './udf_guiMenu';
-import GuiMonthCal from './udf_guiMonthCal';
-import GuiReBar from './udf_guiReBar';
-import GuiRichEdit from './udf_guiRichEdit';
-import GuiScrollBars from './udf_guiScrollBars';
-import GuiSlider from './udf_guiSlider';
-import GuiStatusBar from './udf_guiStatusBar';
-import GuiTab from './udf_guiTab';
-import GuiToolbar from './udf_guiToolbar';
-import GuiToolTip from './udf_guiToolTip';
-import GuiTreeView from './udf_guiTreeView';
-import IE from './udf_ie';
-import Inet from './udf_inet';
-import MathUDF from './udf_math';
-import Misc from './udf_misc';
-import NamedPipes from './udf_namedPipes';
-import NetShare from './udf_netShare';
-import ScreenCapture from './udf_screenCapture';
-import Security from './udf_security';
-import SendMessage from './udf_sendMessage';
-import Sound from './udf_sound';
-import SQLite from './udf_sqlite';
-import StringUDF from './udf_string';
-import Timers from './udf_timers';
 import Visa from './udf_visa';
-import WinAPI from './udf_winAPI';
-import WinAPICom from './udf_WinAPICom';
-import WinAPIDiag from './udf_WinAPIDiag';
-import WinAPIDlg from './udf_WinAPIDlg';
-import WinAPIFiles from './udf_WinAPIFiles';
-import WinAPIGdi from './udf_WinAPIGdi';
-import WinAPILocale from './udf_WinAPILocale';
-import WinAPIMisc from './udf_WinAPIMisc';
-import WinAPIProc from './udf_winAPIProc';
-import WinAPIReg from './udf_WinAPIReg';
-import WinAPIRes from './udf_WinAPIRes';
-import WinAPIShellEx from './udf_WinAPIShellEx';
-import WinAPIShPath from './udf_WinAPIShPath';
-import WinAPISys from './udf_winAPISys';
-import WinAPITheme from './udf_WinAPITheme';
-// import WinNet from './udf_winNet';
+import { completions as ArrayUDF } from '../signatures/udf_array';
+import { completions as Clipboard } from '../signatures/udf_clipboard';
+import { completions as ColorUDF } from '../signatures/udf_color';
+import { completions as Crypt } from '../signatures/udf_crypt';
+import { completions as DateUDF } from '../signatures/udf_date';
+import { completions as EventLog } from '../signatures/udf_eventlog';
+import { completions as Excel } from '../signatures/udf_excel';
+import { completions as FileUDF } from '../signatures/udf_file';
+import { completions as FTPEx } from '../signatures/udf_ftp';
+import { completions as GDIPlus } from '../signatures/udf_gdiplus';
+import { completions as GuiAVI } from '../signatures/udf_guictrlavi';
+import { completions as GuiButton } from '../signatures/udf_guictrlbutton';
+import { completions as GuiComboBox } from '../signatures/udf_guictrlcombobox';
+import { completions as GuiComboBoxEx } from '../signatures/udf_guictrlcomboboxex';
+import { completions as GuiDTP } from '../signatures/udf_guictrldtp';
+import { completions as GuiEdit } from '../signatures/udf_guictrledit';
+import { completions as GuiHeader } from '../signatures/udf_guictrlheader';
+import { completions as GuiImageList } from '../signatures/udf_guiimagelist';
+import { completions as GuiIPAddress } from '../signatures/udf_guictrlipaddress';
+import { completions as GuiListBox } from '../signatures/udf_guictrllistbox';
+import { completions as GuiListView } from '../signatures/udf_guictrllistview';
+import { completions as GuiMenu } from '../signatures/udf_guictrlmenu';
+import { completions as GuiMonthCal } from '../signatures/udf_guictrlmonthcal';
+import { completions as GuiReBar } from '../signatures/udf_guictrlrebar';
+import { completions as GuiRichEdit } from '../signatures/udf_guictrlrichedit';
+import { completions as GuiScrollBars } from '../signatures/udf_guiscrollbars';
+import { completions as GuiSlider } from '../signatures/udf_guictrlslider';
+import { completions as GuiStatusBar } from '../signatures/udf_guictrlstatusbar';
+import { completions as GuiTab } from '../signatures/udf_guictrltab';
+import { completions as GuiToolbar } from '../signatures/udf_guictrltoolbar';
+import { completions as GuiToolTip } from '../signatures/udf_guitooltip';
+import { completions as GuiTreeView } from '../signatures/udf_guictrltreeview';
+import { completions as IE } from '../signatures/udf_ie';
+import { completions as Inet } from '../signatures/udf_inet';
+import { completions as MathUDF } from '../signatures/udf_math';
+import { completions as Misc } from '../signatures/udf_misc';
+import { completions as NamedPipes } from '../signatures/udf_namedpipes';
+import { completions as NetShare } from '../signatures/udf_netshare';
+import { completions as ScreenCapture } from '../signatures/udf_screencapture';
+import { completions as Security } from '../signatures/udf_security';
+import { completions as SendMessage } from '../signatures/udf_sendmessage';
+import { completions as Sound } from '../signatures/udf_sound';
+import { completions as SQLite } from '../signatures/udf_sqlite';
+import { completions as StringUDF } from '../signatures/udf_string';
+import { completions as Timers } from '../signatures/udf_timers';
+import { completions as WinAPI } from '../signatures/udf_winapi';
 import { completions as WinNet } from '../signatures/udf_winnet';
 import { completions as Word } from '../signatures/udf_word';
 import InetConstants from './constantsInet';
@@ -130,6 +115,7 @@ const completions = [
   ...MACROS,
   ...MAIN_FUNCTIONS,
   ...SendKeys,
+  ...Clipboard,
   ...ArrayUDF,
   ...ColorUDF,
   ...Crypt,
@@ -177,21 +163,6 @@ const completions = [
   ...Timers,
   ...Visa,
   ...WinAPI,
-  ...WinAPICom,
-  ...WinAPIDiag,
-  ...WinAPIDlg,
-  ...WinAPIFiles,
-  ...WinAPIGdi,
-  ...WinAPILocale,
-  ...WinAPIMisc,
-  ...WinAPIProc,
-  ...WinAPIReg,
-  ...WinAPIRes,
-  ...WinAPIShellEx,
-  ...WinAPIShPath,
-  ...WinAPISys,
-  ...WinAPITheme,
-  ...WinNet,
   ...Word,
   ...InetConstants,
   ...wrapperDirectivesCompletionItems,
