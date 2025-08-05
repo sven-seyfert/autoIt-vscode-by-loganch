@@ -10,7 +10,7 @@
     "theme": "dark"
   },
   "engines": {
-    "vscode": "^1.96.0"
+    "vscode": "^1.102.0"
   },
   "categories": [
     "Programming Languages",
@@ -29,17 +29,16 @@
   "devDependencies": {
     "@babel/core": "^7.26.7",
     "@babel/preset-env": "^7.26.7",
-    "@types/vscode": "^1.96.0",
+    "@types/vscode": "^1.102.0",
     "babel-loader": "^9.2.1",
-    "eslint": "^8.57.1",
-    "eslint-config-airbnb-base": "^15.0.0",
+    "eslint": "^9.32.0",
     "eslint-config-prettier": "^9.1.0",
     "eslint-plugin-import": "^2.31.0",
     "eslint-plugin-prettier": "^5.2.1",
     "prettier": "^3.4.2",
-    "typescript": "^3.5.3",
-    "webpack": "^5.97.1",
-    "webpack-cli": "^4.3.1"
+    "typescript": "^5.9.0",
+    "webpack": "^5.101.0",
+    "webpack-cli": "^5.1.4"
   },
   "license": "MIT",
   "main": "./dist/extension",

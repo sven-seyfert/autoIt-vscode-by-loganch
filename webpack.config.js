@@ -3,36 +3,66 @@ const path = require('path');
 /** @type {import('webpack').Configuration} */
 const config = {
   target: 'node',
+  mode: process.env.NODE_ENV === 'production' ? 'production' : 'development',
   entry: './src/extension.js',
   output: {
     path: path.resolve(__dirname, 'dist'),
     filename: 'extension.js',
-    libraryTarget: 'commonjs2',
+    library: {
+      type: 'commonjs2',
+    },
     devtoolModuleFilenameTemplate: '../[resource-path]',
+    clean: true,
   },
 
-  devtool: 'source-map',
+  devtool: process.env.NODE_ENV === 'production' ? 'source-map' : 'eval-source-map',
 
   externals: {
     vscode: 'commonjs vscode',
+    'jsonc-parser': 'commonjs jsonc-parser',
   },
 
   resolve: {
-    extensions: ['.js', '.json'],
+    extensions: ['.ts', '.js', '.json'],
+    mainFields: ['main', 'module'],
   },
+
   module: {
     rules: [
       {
-        test: /\.js$/,
+        test: /\.(js|ts)$/,
         exclude: /node_modules/,
         use: {
           loader: 'babel-loader',
           options: {
-            presets: ['@babel/preset-env'],
+            configFile: path.resolve(__dirname, 'babel.config.json'),
+            cacheDirectory: true,
+            cacheCompression: false,
           },
         },
       },
     ],
+  },
+
+  optimization: {
+    minimize: process.env.NODE_ENV === 'production',
+    usedExports: true,
+    sideEffects: false,
+    splitChunks: false,
+    concatenateModules: true,
+  },
+
+  performance: {
+    hints: false,
+  },
+
+  stats: {
+    errorDetails: true,
+    colors: true,
+  },
+
+  infrastructureLogging: {
+    level: 'warn',
   },
 };
 

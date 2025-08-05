@@ -22,7 +22,7 @@ const { config } = conf;
  * @param {TextDocument} document - The document to run the AU3Check process on.
  * @returns {Promise<string>} A promise that resolves with the console output of the check process.
  */
-const runCheckProcess = document => {
+const runCheckProcess = (document) => {
   return new Promise((resolve, reject) => {
     let consoleOutput = '';
     const params = [
@@ -44,7 +44,7 @@ const runCheckProcess = document => {
     ];
 
     // Add -I for each include path
-    config.includePaths.forEach(path => {
+    config.includePaths.forEach((path) => {
       params.push('-I', path);
     });
 
@@ -66,14 +66,14 @@ const runCheckProcess = document => {
       cwd: dirname(document.fileName),
     });
 
-    checkProcess.stdout.on('data', data => {
+    checkProcess.stdout.on('data', (data) => {
       if (data.length === 0) {
         return;
       }
       consoleOutput += data.toString();
     });
 
-    checkProcess.stderr.on('error', error => {
+    checkProcess.stderr.on('error', (error) => {
       reject(error);
     });
 
@@ -83,11 +83,11 @@ const runCheckProcess = document => {
   });
 };
 
-const handleCheckProcessError = error => {
+const handleCheckProcessError = (error) => {
   window.showErrorMessage(`${config.checkPath} ${error}`);
 };
 
-const validateCheckPath = checkPath => {
+const validateCheckPath = (checkPath) => {
   if (!existsSync(checkPath)) {
     window.showErrorMessage(
       'Invalid Check Path! Please review AutoIt settings (Check Path in UI, autoit.checkPath in JSON)',
@@ -144,7 +144,7 @@ const checkAutoItCode = async (document, diagnosticCollection) => {
   }
 };
 
-export const activate = ctx => {
+export const activate = (ctx) => {
   const features = [
     hoverFeature,
     completionFeature,
@@ -170,12 +170,12 @@ export const activate = ctx => {
     const diagnosticCollection = languages.createDiagnosticCollection('autoit');
     ctx.subscriptions.push(diagnosticCollection);
 
-    workspace.onDidSaveTextDocument(document => checkAutoItCode(document, diagnosticCollection));
-    workspace.onDidOpenTextDocument(document => checkAutoItCode(document, diagnosticCollection));
-    workspace.onDidCloseTextDocument(document => {
+    workspace.onDidSaveTextDocument((document) => checkAutoItCode(document, diagnosticCollection));
+    workspace.onDidOpenTextDocument((document) => checkAutoItCode(document, diagnosticCollection));
+    workspace.onDidCloseTextDocument((document) => {
       diagnosticCollection.delete(document.uri);
     });
-    window.onDidChangeActiveTextEditor(editor => {
+    window.onDidChangeActiveTextEditor((editor) => {
       if (editor) {
         checkAutoItCode(editor.document, diagnosticCollection);
       }

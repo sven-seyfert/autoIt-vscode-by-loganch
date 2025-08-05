@@ -4,10 +4,23 @@
       "@babel/preset-env",
       {
         "targets": {
-          "esmodules": true,
-          "node": true
-        }
+          "node": "18.17.0"
+        },
+        "modules": "commonjs",
+        "useBuiltIns": false,
+        "bugfixes": true,
+        "shippedProposals": true
       }
     ]
-  ]
+  ],
+  "env": {
+    "development": {
+      "sourceMaps": "inline",
+      "retainLines": true
+    },
+    "production": {
+      "sourceMaps": false,
+      "compact": true
+    }
+  }
 }
