@@ -8,62 +8,47 @@ const config = {
   output: {
     path: path.resolve(__dirname, 'dist'),
     filename: 'extension.js',
-    library: {
-      type: 'commonjs2',
-    },
+    library: { type: 'commonjs2' },
     devtoolModuleFilenameTemplate: '../[resource-path]',
-    clean: true,
+    clean: true
   },
-
-  devtool: process.env.NODE_ENV === 'production' ? 'source-map' : 'eval-source-map',
-
+  // Use inline source maps in development (best for VS Code extension debugging),
+  // and external source maps in production.
+  devtool: process.env.NODE_ENV === 'production' ? 'source-map' : 'inline-source-map',
   externals: {
     vscode: 'commonjs vscode',
-    'jsonc-parser': 'commonjs jsonc-parser',
+    'jsonc-parser': 'commonjs jsonc-parser'
   },
-
   resolve: {
     extensions: ['.ts', '.js', '.json'],
-    mainFields: ['main', 'module'],
+    mainFields: ['main', 'module']
   },
-
   module: {
     rules: [
       {
-        test: /\.(js|ts)$/,
+        test: /.(js|ts)$/,
         exclude: /node_modules/,
         use: {
           loader: 'babel-loader',
           options: {
             configFile: path.resolve(__dirname, 'babel.config.json'),
             cacheDirectory: true,
-            cacheCompression: false,
-          },
-        },
-      },
-    ],
+            cacheCompression: false
+          }
+        }
+      }
+    ]
   },
-
   optimization: {
     minimize: process.env.NODE_ENV === 'production',
     usedExports: true,
     sideEffects: false,
     splitChunks: false,
-    concatenateModules: true,
+    concatenateModules: true
   },
-
-  performance: {
-    hints: false,
-  },
-
-  stats: {
-    errorDetails: true,
-    colors: true,
-  },
-
-  infrastructureLogging: {
-    level: 'warn',
-  },
+  performance: { hints: false },
+  stats: { errorDetails: true, colors: true },
+  infrastructureLogging: { level: 'warn' }
 };
 
 module.exports = config;
