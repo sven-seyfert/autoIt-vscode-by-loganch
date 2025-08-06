@@ -12,7 +12,7 @@ import goToDefinitionFeature from './ai_definition';
 
 import { registerCommands } from './registerCommands';
 import { formatterProvider } from './ai_formatter';
-import { parseAu3CheckOutput } from './diagnosticUtils';
+import { parseAu3CheckOutput, clearDiagnosticsOwnedBy } from './diagnosticUtils';
 import conf from './ai_config';
 
 const { config } = conf;
@@ -173,7 +173,38 @@ export const activate = (ctx) => {
     workspace.onDidSaveTextDocument((document) => checkAutoItCode(document, diagnosticCollection));
     workspace.onDidOpenTextDocument((document) => checkAutoItCode(document, diagnosticCollection));
     workspace.onDidCloseTextDocument((document) => {
-      diagnosticCollection.delete(document.uri);
+      // First remove all diagnostics owned by the closing document (including in included files)
+      try { clearDiagnosticsOwnedBy(diagnosticCollection, document.uri); } catch (err) {
+        // Optional debug logging to help diagnose cleanup failures without breaking the extension
+        try {
+          const cfg = workspace.getConfiguration('autoit');
+          const dbg = cfg?.get?.('debugLogging') === true;
+          const msg = `[AutoIt][extension] clearDiagnosticsOwnedBy failed during document close for ${document?.uri?.toString?.() ?? document?.fileName ?? 'unknown'}: ${err?.message ?? err}`;
+          if (dbg) {
+            // eslint-disable-next-line no-console
+            console.debug(msg);
+          }
+        } catch {
+          // swallow any logging errors
+        }
+      }
+      // Then remove any remaining diagnostics specifically for the closed document
+      try {
+        diagnosticCollection.delete(document.uri);
+      } catch (err) {
+        // Optional debug logging for delete failures
+        try {
+          const cfg = workspace.getConfiguration('autoit');
+          const dbg = cfg?.get?.('debugLogging') === true;
+          const msg = `[AutoIt][extension] diagnosticCollection.delete failed during document close for ${document?.uri?.toString?.() ?? document?.fileName ?? 'unknown'}: ${err?.message ?? err}`;
+          if (dbg) {
+            // eslint-disable-next-line no-console
+            console.debug(msg);
+          }
+        } catch {
+          // swallow any logging errors
+        }
+      }
     });
     window.onDidChangeActiveTextEditor((editor) => {
       if (editor) {

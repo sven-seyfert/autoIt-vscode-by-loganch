@@ -1,4 +1,4 @@
-import { Diagnostic, DiagnosticSeverity, Range, Position, Uri } from 'vscode';
+import { Diagnostic, DiagnosticSeverity, Range, Position, Uri, workspace, window } from 'vscode';
 
 /**
  * Returns the diagnostic severity based on the severity string.
@@ -109,6 +109,17 @@ export const parseAu3CheckOutput = (output, collection, documentURI) => {
 
     const diagnosticToAdd = new Diagnostic(diagnosticRange, description, diagnosticSeverity);
 
+    // Set proper human-readable source as per VS Code API guidelines
+    diagnosticToAdd.source = 'au3check';
+
+    // Store ownership information using a custom property for cleanup purposes
+    // This allows clearDiagnosticsOwnedBy to identify diagnostics that belong to a specific owner
+    try {
+      diagnosticToAdd._ownerUri = documentURI.toString();
+    } catch {
+      // no-op if assignment fails for any reason
+    }
+
     // Use scriptPath by default to correctly attribute diagnostics to included files.
     // Fall back to documentURI only when AU3Check's path encoding likely corrupts the path:
     // specifically, when both paths refer to the same file AND either contains special characters.
@@ -132,8 +143,142 @@ export const parseAu3CheckOutput = (output, collection, documentURI) => {
   });
 
   diagnostics.forEach((diagnosticArray, file) => {
+    // Track the file URI we set diagnostics for, to enable safe future cleanup.
+    try { trackDiagnosticFile(file); } catch {}
     collection.set(Uri.file(file), diagnosticArray);
   });
+};
+
+/**
+ * Remove all diagnostics from the given collection that were created by the specified ownerUri,
+ * without relying on internal VS Code API properties.
+ * Strategy:
+ * - Iterate over known URIs:
+ *   1) All currently open text documents (workspace.textDocuments)
+ *   2) All workspace files that currently have diagnostics, discovered by scanning the collection
+ *      via keys we already touched in this session (optional, handled by a lightweight index).
+ *
+ * Note: Since DiagnosticCollection lacks public iteration, we use a conservative, public-API-only approach:
+ * - Check every open text document's URI for diagnostics and filter by Diagnostic.source.
+ * - Additionally, if the extension maintains an index of URIs it set diagnostics for, use that list.
+ *   We implement a minimal in-module index that tracks URIs whenever parseAu3CheckOutput sets diagnostics.
+ */
+
+/** @type {Set<string>} */
+let trackedDiagnosticFileUris = new Set();
+
+/**
+ * Register a file path (as string) whose diagnostics we set, so later cleanup can find it safely via public APIs.
+ * @param {string} filePath
+ */
+const trackDiagnosticFile = (filePath) => {
+  if (!filePath) return;
+  try {
+    const uri = Uri.file(filePath).toString();
+    trackedDiagnosticFileUris.add(uri);
+  } catch {
+    // ignore tracking errors
+  }
+};
+
+/**
+ * Filter diagnostics on a specific URI by owner URI.
+ * @param {import('vscode').DiagnosticCollection} collection
+ * @param {import('vscode').Uri} uri
+ * @param {string} owner
+ */
+const filterDiagnosticsOnUriByOwner = (collection, uri, owner) => {
+  try {
+    const current = collection.get(uri);
+    if (!current || current.length === 0) return;
+    const filtered = current.filter(d => d && d._ownerUri !== owner);
+    if (filtered.length === 0) {
+      collection.delete(uri);
+    } else if (filtered.length !== current.length) {
+      collection.set(uri, filtered);
+    }
+  } catch (err) {
+    // Optional debug logging of cleanup failures without breaking the extension
+    try {
+      const cfg = workspace.getConfiguration('autoit');
+      const dbg = cfg?.get?.('debugLogging') === true;
+      const msg = `[AutoIt][diagnostics] Failed to filter diagnostics on ${uri?.toString?.() ?? String(uri)} for owner=${owner}: ${err?.message ?? err}`;
+      if (dbg) {
+        if (window?.createOutputChannel) {
+          const ch = window.createOutputChannel('AutoIt');
+          ch.appendLine(msg);
+        } else {
+          // eslint-disable-next-line no-console
+          console.debug(msg);
+        }
+      }
+    } catch {
+      // swallow any logging errors
+    }
+  }
+};
+
+/**
+ * Public-API-only clearing of diagnostics owned by a given ownerUri.
+ * @param {import('vscode').DiagnosticCollection} collection
+ * @param {string|Uri} ownerUri
+ */
+export const clearDiagnosticsOwnedBy = (collection, ownerUri) => {
+  const owner = typeof ownerUri === 'string' ? ownerUri : ownerUri?.toString?.() ?? String(ownerUri);
+
+  // 1) Filter diagnostics for all currently open text documents (public API).
+  try {
+    for (const doc of workspace.textDocuments ?? []) {
+      filterDiagnosticsOnUriByOwner(collection, doc.uri, owner);
+    }
+  } catch (err) {
+    // Optional debug logging without breaking extension
+    try {
+      const cfg = workspace.getConfiguration('autoit');
+      const dbg = cfg?.get?.('debugLogging') === true;
+      const msg = `[AutoIt][diagnostics] Failed while iterating open documents during cleanup for owner=${owner}: ${err?.message ?? err}`;
+      if (dbg) {
+        if (window?.createOutputChannel) {
+          const ch = window.createOutputChannel('AutoIt');
+          ch.appendLine(msg);
+        } else {
+          // eslint-disable-next-line no-console
+          console.debug(msg);
+        }
+      }
+    } catch {
+      // swallow any logging errors
+    }
+  }
+
+  // 2) Filter diagnostics for any URIs we previously set (tracked index), using only public API get/set/delete.
+  // Convert tracked string URIs back to Uri and filter them.
+  try {
+    if (trackedDiagnosticFileUris.size > 0) {
+      const uris = Array.from(trackedDiagnosticFileUris).map(u => Uri.parse(u));
+      for (const uri of uris) {
+        filterDiagnosticsOnUriByOwner(collection, uri, owner);
+      }
+    }
+  } catch (err) {
+    // Optional debug logging without breaking extension
+    try {
+      const cfg = workspace.getConfiguration('autoit');
+      const dbg = cfg?.get?.('debugLogging') === true;
+      const msg = `[AutoIt][diagnostics] Failed while iterating tracked URIs during cleanup for owner=${owner}: ${err?.message ?? err}`;
+      if (dbg) {
+        if (window?.createOutputChannel) {
+          const ch = window.createOutputChannel('AutoIt');
+          ch.appendLine(msg);
+        } else {
+          // eslint-disable-next-line no-console
+          console.debug(msg);
+        }
+      }
+    } catch {
+      // swallow any logging errors
+    }
+  }
 };
 
 export default parseAu3CheckOutput;
