@@ -539,8 +539,10 @@ const AiOut = ({ id, aiOutProcess }) => {
             ) {
               if (keybindings[`${commandsPrefix}restartScript`]) lines[i] += ` or `;
 
-              lines[i] += `${keybindings[`${commandsPrefix}killScript`] ||
-                keybindings[`${commandsPrefix}killScriptOpened`]} to Stop.`;
+              lines[i] += `${
+                keybindings[`${commandsPrefix}killScript`] ||
+                keybindings[`${commandsPrefix}killScriptOpened`]
+              } to Stop.`;
             }
             hotkeyFailedMsgFound = true;
           }
@@ -578,10 +580,10 @@ function procRunner(cmdPath, args = [], bAiOutReuse = true) {
     : new Proxy(
         {},
         {
-          get() {
+        get() {
             return () => {};
-          },
         },
+      },
       );
   const aiOut = new AiOut({ id, aiOutProcess });
   const info = (runnerPrev && runnerPrev.info) || {
@@ -602,9 +604,9 @@ function procRunner(cmdPath, args = [], bAiOutReuse = true) {
     aiOut.appendLine(
       // eslint-disable-next-line no-nested-ternary
       (code > 1 || code < -1 ? '!' : code < 1 ? '>' : '-') +
-        `>Exit code ${code}${text ? ' (' + text + ')' : ''} Time: ${(info.endTime -
-          info.startTime) /
-          1000}`,
+        `>Exit code ${code}${text ? ' (' + text + ')' : ''} Time: ${
+          (info.endTime - info.startTime) / 1000
+        }`,
     );
     runners.cleanup();
     //      runners.lastId = null;
@@ -660,7 +662,9 @@ function procRunner(cmdPath, args = [], bAiOutReuse = true) {
 
   runner.stdout.on('data', data => {
     try {
-      const output = (config.outputCodePage ? decode(data, config.outputCodePage) : data).toString();
+      const output = (
+        config.outputCodePage ? decode(data, config.outputCodePage) : data
+      ).toString();
       aiOut.append(output);
     } catch (er) {
       console.error(er);
@@ -669,7 +673,9 @@ function procRunner(cmdPath, args = [], bAiOutReuse = true) {
 
   runner.stderr.on('data', data => {
     try {
-      const output = (config.outputCodePage ? decode(data, config.outputCodePage) : data).toString();
+      const output = (
+        config.outputCodePage ? decode(data, config.outputCodePage) : data
+      ).toString();
       aiOut.append(output);
     } catch (er) {
       console.error(er);
@@ -682,12 +688,7 @@ function procRunner(cmdPath, args = [], bAiOutReuse = true) {
 const killScript = (thisFile = null) => {
   const data = runners.findRunner({ status: true, thisFile });
   if (!data) {
-    const file = thisFile
-      ? ` (${thisFile
-          .split('\\')
-          .splice(-2, 2)
-          .join('\\')}) `
-      : ' ';
+    const file = thisFile ? ` (${thisFile.split('\\').splice(-2, 2).join('\\')}) ` : ' ';
     showInformationMessage(`No script${file}currently is running.`, { timeout: 10000 });
     return;
   }
@@ -711,7 +712,7 @@ const runScript = () => {
     !keybindings[commandsPrefix + 'killScriptOpened']
   ) {
     messages.error.killScript = showErrorMessage(
-      `Please set "AutoIt: Kill Running Script" keyboard shortcut.`,
+      'Please set "AutoIt: Kill Running Script" keyboard shortcut.',
       { timeout: 30000 },
     );
     return messages.error.killScript;
@@ -1057,7 +1058,7 @@ const openInclude = () => {
 
   // check for
   if (!includeFile) {
-    window.showErrorMessage(`Unable to locate #include file.`);
+    window.showErrorMessage('Unable to locate #include file.');
     return;
   }
 
@@ -1076,7 +1077,7 @@ const insertHeader = () => {
   const found = findFunc.exec(lineText);
 
   if (found === null) {
-    window.showErrorMessage(`Not on function definition.`);
+    window.showErrorMessage('Not on function definition.');
     return;
   }
   const hdrType =
@@ -1101,10 +1102,7 @@ const insertHeader = () => {
         tag += '[in/out] ';
       }
       syntaxBegin += (index ? ', ' : '') + byref + parameter;
-      return parameter
-        .split(' ')[0]
-        .padEnd(21)
-        .concat(tag);
+      return parameter.split(' ')[0].padEnd(21).concat(tag);
     });
     const paramPrefix = '\n;                  ';
     paramsOut = params.join(paramPrefix);

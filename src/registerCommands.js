@@ -8,9 +8,7 @@ export const registerCommands = ctx => {
   for (const command of commandsList) {
     const commandFunc = aiCommandsMap.get(command);
     if (typeof commandFunc === 'function') {
-      ctx.subscriptions.push(
-        commands.registerCommand(commandsPrefix + command, commandFunc)
-      );
+      ctx.subscriptions.push(commands.registerCommand(commandsPrefix + command, commandFunc));
     }
   }
 };
