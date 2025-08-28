@@ -1,7 +1,123 @@
 import { languages, Location, Position, Range, Uri, window } from 'vscode';
 import { AUTOIT_MODE, getIncludePath, getIncludeText, getIncludeScripts } from './util';
 
+// Constants for better maintainability
+const REGEX_FLAGS = 'mi';
+const VARIABLE_KEYWORDS = ['Local', 'Global', 'Const'];
+const FUNCTION_KEYWORD = 'Func';
+const VOLATILE_KEYWORD = 'volatile';
+
+// Regex patterns
+const VARIABLE_PATTERN_TEMPLATE =
+  '^[ \\t]*(?:(?:{keywords})[ \\t]+)?' +
+  '(?:(?:\\$[A-Za-z_][A-Za-z0-9_]*\\s*(?:=\\s*[^,\\r\\n]+)?\\s*,\\s*)*?)' +
+  '({escaped})\\b' +
+  '(?:[^\\n]*?(?:,\\s*[^\\n]*?)?)(?:\\s*_\\s*\\r?\\n[\\s\\S]*?)?';
+
+const FUNCTION_PATTERN_A_TEMPLATE =
+  '^[ \\t]*{funcKeyword}[ \\t]+(?:{volatile}[ \\t]+)?({escaped})[ \\t]*\\(';
+const FUNCTION_PATTERN_B_TEMPLATE =
+  '^[ \\t]*{funcKeyword}[ \\t]+({escaped})[ \\t]+{volatile}[ \\t]*\\(';
+
+// Custom Error Classes
+class DefinitionProviderError extends Error {
+  constructor(message, cause = null) {
+    super(message);
+    this.name = 'DefinitionProviderError';
+    this.cause = cause;
+  }
+}
+
+class ValidationError extends DefinitionProviderError {
+  constructor(message, cause = null) {
+    super(message, cause);
+    this.name = 'ValidationError';
+  }
+}
+
+class RegexError extends DefinitionProviderError {
+  constructor(message, cause = null) {
+    super(message, cause);
+    this.name = 'RegexError';
+  }
+}
+
 const AutoItDefinitionProvider = {
+  /**
+   * Escapes special regex characters in a string
+   * @param {string} string - The string to escape
+   * @returns {string} The escaped string
+   */
+  escapeRegex(string) {
+    if (typeof string !== 'string') {
+      throw new ValidationError('Input must be a string for regex escaping');
+    }
+    return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  },
+
+  /**
+   * Creates a regex pattern for variable definitions
+   * @param {string} variableName - The variable name to create regex for
+   * @returns {RegExp} The compiled regex for variable matching
+   */
+  createVariableRegex(variableName) {
+    try {
+      if (!variableName || typeof variableName !== 'string') {
+        throw new ValidationError('Variable name must be a non-empty string');
+      }
+
+      const escaped = this.escapeRegex(variableName);
+      const keywords = VARIABLE_KEYWORDS.join('|');
+      const pattern = VARIABLE_PATTERN_TEMPLATE.replace('{keywords}', keywords).replace(
+        '{escaped}',
+        escaped,
+      );
+
+      return new RegExp(pattern, REGEX_FLAGS);
+    } catch (error) {
+      if (error instanceof ValidationError) {
+        throw error;
+      }
+      throw new RegexError(
+        `Failed to create variable regex for "${variableName}": ${error.message}`,
+        error,
+      );
+    }
+  },
+
+  /**
+   * Creates a regex pattern for function definitions
+   * @param {string} functionName - The function name to create regex for
+   * @returns {RegExp} The compiled regex for function matching
+   */
+  createFunctionRegex(functionName) {
+    try {
+      if (!functionName || typeof functionName !== 'string') {
+        throw new ValidationError('Function name must be a non-empty string');
+      }
+
+      const escaped = this.escapeRegex(functionName);
+      const patternA = FUNCTION_PATTERN_A_TEMPLATE.replace('{funcKeyword}', FUNCTION_KEYWORD)
+        .replace('{volatile}', VOLATILE_KEYWORD)
+        .replace('{escaped}', escaped);
+
+      const patternB = FUNCTION_PATTERN_B_TEMPLATE.replace('{funcKeyword}', FUNCTION_KEYWORD)
+        .replace('{volatile}', VOLATILE_KEYWORD)
+        .replace('{escaped}', escaped);
+
+      const combined = `(?:${patternA})|(?:${patternB})`;
+      return new RegExp(combined, REGEX_FLAGS);
+    } catch (error) {
+      if (error instanceof ValidationError) {
+        throw error;
+      }
+      throw new RegexError(
+        `Failed to create function regex for "${functionName}": ${error.message}`,
+        error,
+      );
+    }
+  },
+
   /**
    * Finds the definition of a word in a document and returns its location.
    * @param {import("vscode").TextDocument} document - The document in which to search for the word definition.
@@ -12,7 +128,7 @@ const AutoItDefinitionProvider = {
     try {
       // Input validation
       if (!document || !position || typeof document.getText !== 'function') {
-        return null;
+        throw new ValidationError('Invalid document or position provided');
       }
       const lookupRange = document.getWordRangeAtPosition(position);
       if (!lookupRange) return null;
@@ -57,42 +173,48 @@ const AutoItDefinitionProvider = {
 
       return null;
     } catch (err) {
-      window.showErrorMessage(`provideDefinition error: ${err.message}`);
+      // Provide user-friendly error messages while categorizing errors internally
+      let userMessage = 'Definition lookup failed';
+      if (err instanceof ValidationError) {
+        userMessage = 'Invalid input provided for definition lookup';
+      } else if (err instanceof RegexError) {
+        userMessage = 'Pattern matching failed during definition lookup';
+      } else if (err instanceof DefinitionProviderError) {
+        userMessage = err.message;
+      }
+
+      window.showErrorMessage(`provideDefinition error: ${userMessage}`);
       return null;
     }
   },
 
   /**
    * Determines the regex for a given lookup string.
-   * Chooses variable or function regex and compiles with "mi" flags.
+   * Chooses variable or function regex and compiles with appropriate flags.
    * @param {string} lookup - The lookup string.
    * @returns {RegExp} The regex for the lookup string.
    */
   determineRegex(lookup) {
     try {
-      if (lookup.startsWith('$')) {
-        // Variables: robust declaration pattern supporting Local|Global|Const,
-        // spaces/tabs, and lists with continuation underscores.
-        const escaped = lookup.replace(/[$.*+?^${}()|[\]\\]/g, '\\$&');
-        const varPattern =
-          '^[ \\t]*(?:(?:Local|Global|Const)[ \\t]+)?' +
-          '(?:(?:\\$[A-Za-z_][A-Za-z0-9_]*\\s*(?:=\\s*[^,\\r\\n]+)?\\s*,\\s*)*?)' +
-          '(' +
-          escaped +
-          ')\\b' +
-          '(?:[^\\n]*?(?:,\\s*[^\\n]*?)?)(?:\\s*_\\s*\\r?\\n[\\s\\S]*?)?';
-        return new RegExp(varPattern, 'mi');
+      if (!lookup || typeof lookup !== 'string') {
+        throw new ValidationError('Lookup string must be a non-empty string');
       }
 
-      // Functions: case-insensitive "Func", optional "volatile" before or after name, flexible spacing.
-      const escapedFuncName = lookup.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      const funcPatternA =
-        '^[ \\t]*Func[ \\t]+(?:volatile[ \\t]+)?(' + escapedFuncName + ')[ \\t]*\\(';
-      const funcPatternB = '^[ \\t]*Func[ \\t]+(' + escapedFuncName + ')[ \\t]+volatile[ \\t]*\\(';
-      const combined = `(?:${funcPatternA})|(?:${funcPatternB})`;
-      return new RegExp(combined, 'mi');
-    } catch (e) {
-      window.showErrorMessage(`determineRegex error: ${e.message}`);
+      if (lookup.startsWith('$')) {
+        // Variables: use the variable regex helper
+        return this.createVariableRegex(lookup);
+      }
+
+      // Functions: use the function regex helper
+      return this.createFunctionRegex(lookup);
+    } catch (error) {
+      // Provide user-friendly error message while preserving error details
+      let userMessage = 'Failed to create search pattern';
+      if (error instanceof ValidationError || error instanceof RegexError) {
+        userMessage = error.message;
+      }
+
+      window.showErrorMessage(`determineRegex error: ${userMessage}`);
       return null;
     }
   },
@@ -108,6 +230,20 @@ const AutoItDefinitionProvider = {
    */
   findDefinitionInIncludeFiles(docText, defRegex, document, lookupText) {
     try {
+      // Input validation
+      if (!docText || typeof docText !== 'string') {
+        throw new ValidationError('Document text must be a non-empty string');
+      }
+      if (!defRegex || !(defRegex instanceof RegExp)) {
+        throw new ValidationError('Definition regex must be a valid RegExp');
+      }
+      if (!document) {
+        throw new ValidationError('Document must be provided');
+      }
+      if (!lookupText || typeof lookupText !== 'string') {
+        throw new ValidationError('Lookup text must be a non-empty string');
+      }
+
       const scriptsToSearch = [];
       const mockResult = getIncludeScripts(document, docText, scriptsToSearch);
       // Handle both mock (returns array) and real function (populates by reference)
@@ -188,7 +324,15 @@ const AutoItDefinitionProvider = {
 
       return null;
     } catch (err) {
-      window.showErrorMessage(`findDefinitionInIncludeFiles error: ${err.message}`);
+      // Provide user-friendly error message while categorizing errors
+      let userMessage = 'Include file search failed';
+      if (err instanceof ValidationError) {
+        userMessage = 'Invalid parameters provided for include file search';
+      } else if (err instanceof DefinitionProviderError) {
+        userMessage = err.message;
+      }
+
+      window.showErrorMessage(`findDefinitionInIncludeFiles error: ${userMessage}`);
       return null;
     }
   },
