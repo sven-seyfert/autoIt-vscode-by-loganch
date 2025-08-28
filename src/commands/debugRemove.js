@@ -11,8 +11,10 @@ import searchAndReplace from './commandUtils';
  * @returns {Promise<void>} A promise that resolves once the debug lines are removed.
  */
 async function debugRemove() {
-  const consoleWriteDebugPattern = /\s+?(;~?\s+)?;### Debug CONSOLE.*?\r\n\s?(;~?\s+)?ConsoleWrite\('@@ Debug\('.+\r\n/g;
-  const msgBoxDebugPattern = /\s+?(;~?\s+)?;### Debug MSGBOX.*?\r\n\s?(;~?\s+)?MsgBox\(262144, 'Debug line ~'.+\r\n/g;
+  const consoleWriteDebugPattern =
+    /\s+?(;~?\s+)?;### Debug CONSOLE.*?\r\n\s?(;~?\s+)?ConsoleWrite\('@@ Debug\('.+\r\n/g;
+  const msgBoxDebugPattern =
+    /\s+?(;~?\s+)?;### Debug MSGBOX.*?\r\n\s?(;~?\s+)?MsgBox\(262144, 'Debug line ~'.+\r\n/g;
 
   const consoleWriteReplacementsMade = await searchAndReplace(consoleWriteDebugPattern);
   const msgBoxReplacementsMade = await searchAndReplace(msgBoxDebugPattern);
@@ -26,4 +28,4 @@ async function debugRemove() {
   }
 }
 
-export default debugRemove;
+export { debugRemove as default };

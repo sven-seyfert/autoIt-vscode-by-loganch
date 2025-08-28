@@ -53,4 +53,4 @@ async function functionTraceAdd() {
   });
 }
 
-export default functionTraceAdd;
+export { functionTraceAdd as default };

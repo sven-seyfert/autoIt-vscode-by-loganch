@@ -9,8 +9,8 @@ async function traceRemove() {
   if (traceRemovalResult) {
     vscode.window.showInformationMessage(`${traceRemovalResult} trace line(s) removed.`);
   } else {
-    vscode.window.showInformationMessage(`No trace lines found.`);
+    vscode.window.showInformationMessage('No trace lines found.');
   }
 }
 
-export default traceRemove;
+export { traceRemove as default };
