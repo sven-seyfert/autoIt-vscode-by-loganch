@@ -8,12 +8,13 @@ import {
   getIncludeData,
   AUTOIT_MODE,
   functionPattern as _functionPattern,
+  setRegExpFlags,
 } from './util';
 import DEFAULT_UDFS from './constants';
 
 let currentIncludeFiles = [];
 let includes = [];
-const functionPattern = _functionPattern.setFlags('gim');
+const functionPattern = setRegExpFlags(_functionPattern, 'gim');
 let parenTriggerOn = workspace.getConfiguration('autoit').get('enableParenTriggerForFunctions');
 
 workspace.onDidChangeConfiguration(event => {
