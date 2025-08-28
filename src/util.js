@@ -1,6 +1,7 @@
+/// <reference types="vscode" />
 const fs = require('fs');
 const path = require('path');
-const { CompletionItemKind, MarkdownString, workspace } = require('vscode');
+const { CompletionItemKind, MarkdownString, workspace, window } = require('vscode');
 const { findFilepath } = require('./ai_config').default;
 
 const descriptionHeader = '|Description |Value |\n|:---|:---:|\n';
@@ -10,10 +11,8 @@ const trueFalseHeader = `\n|&nbsp;|&nbsp;&nbsp;&nbsp;|&nbsp;
 const opt = '**[optional]**';
 const br = '\u0020\u0020';
 const defaultZero = `${br + br}\`Default = 0\``;
-// eslint-disable-next-line no-extend-native
-RegExp.prototype.setFlags = function setFlags(flags) {
-  return RegExp(this.source, flags);
-};
+
+const setRegExpFlags = (regex, flags) => new RegExp(regex.source, flags);
 
 const setDetailAndDocumentation = (array, detail, doc) => {
   const newArray = array.map(item => {
@@ -53,29 +52,182 @@ const isSkippableLine = line => {
   return false;
 };
 
+/**
+ * Normalize a path for cross-OS consistency and stable Map/Set keys.
+ * - path.normalize
+ * - absolute resolve (fallback to process.cwd() if relative)
+ * - replace all backslashes with path.sep for internal consistency
+ * - lowercase drive letter on Windows
+ * @param {string} p
+ * @returns {string}
+ */
+const normalizePath = p => {
+  try {
+    if (typeof p !== 'string' || p.length === 0) return '';
+    let out = p;
+    // Normalize first
+    out = path.normalize(out);
+
+    // Make absolute if necessary, resolve against cwd as fallback
+    if (!path.isAbsolute(out)) {
+      out = path.resolve(process.cwd(), out);
+    }
+
+    // Replace backslashes with path.sep for internal consistency
+    if (path.sep === '/') {
+      out = out.replace(/\\/g, '/');
+    } else {
+      // On Windows keep native sep but still collapse any stray forward slashes
+      out = out.replace(/\//g, '\\');
+    }
+
+    // Lowercase drive letter on Windows (e.g., C:\ -> c:\)
+    if (process.platform === 'win32' && /^[A-Z]:[\\/]/.test(out)) {
+      out = out.charAt(0).toLowerCase() + out.slice(1);
+    }
+
+    return out;
+  } catch (e) {
+    window.showInformationMessage(`normalizePath error: ${e}`);
+    return '';
+  }
+};
+
+// Module-level cache for include file contents
+// key = normalized absolute path; value = { mtimeMs: number, content: string }
+const includeCache = new Map();
+
+/**
+ * Safely read include file text with caching and .au3 filtering.
+ * @param {string} filePath
+ * @returns {string} file content or ''
+ */
 const getIncludeText = filePath => {
-  return fs.readFileSync(filePath).toString();
+  try {
+    const normalized = normalizePath(filePath);
+    if (!normalized) return '';
+
+    // Only process .au3 files (case-insensitive)
+    const ext = path.extname(normalized).toLowerCase();
+    if (ext !== '.au3') return '';
+
+    let stat;
+    try {
+      stat = fs.statSync(normalized);
+    } catch (e) {
+      window.showInformationMessage(`getIncludeText stat error: ${normalized} ${e}`);
+      return '';
+    }
+
+    const mtimeMs = stat && typeof stat.mtimeMs === 'number' ? stat.mtimeMs : 0;
+
+    const cached = includeCache.get(normalized);
+    if (cached && cached.mtimeMs === mtimeMs) {
+      return cached.content;
+    }
+
+    let data = '';
+    try {
+      data = fs.readFileSync(normalized, { encoding: 'utf8' });
+    } catch (e) {
+      window.showInformationMessage(`getIncludeText read error: ${normalized} ${e}`);
+      return '';
+    }
+
+    includeCache.set(normalized, { mtimeMs, content: data });
+    return data;
+  } catch (err) {
+    window.showInformationMessage(`getIncludeText error: ${err}`);
+    return '';
+  }
 };
 
 /**
  * Returns the include path of a given file or path based on the provided document.
+ * Enhanced normalization and cross-OS consistency.
+ * - Relative includes resolved against document path when possible.
+ * - Library includes resolved using findFilepath.
+ * - normalizePath is applied before return.
+ * - Never throws; returns empty string when not resolvable.
  * @param {string} fileOrPath - The file or path to get the include path of.
- * @param {TextDocument} document - The document object to use for determining the include path.
+ * @param {import('vscode').TextDocument} document - The document object to use for determining the include path.
  * @returns {string} The include path of the given file or path.
  */
 const getIncludePath = (fileOrPath, document) => {
-  let includePath = '';
+  try {
+    if (!fileOrPath || typeof fileOrPath !== 'string') return '';
+    const raw = fileOrPath.trim();
 
-  if (fileOrPath.startsWith(':', 1)) {
-    includePath = fileOrPath;
-  } else {
-    const docDir = path.dirname(document.fileName);
-    includePath = path.join(docDir, fileOrPath);
+    // Detect if this is a library include (originally had angle brackets) vs relative include
+    const hasAngle = /^<.+>$/.test(raw);
+    const isQuoted = /^".+"$/.test(raw);
+    const candidate = raw.replace(/^<|>$/g, '').replace(/^"|"$/g, '');
+
+    // If path is already absolute, normalize and return
+    if (path.isAbsolute(candidate)) {
+      return normalizePath(candidate);
+    }
+
+    // For library includes (angle brackets), prioritize library paths
+    if (
+      hasAngle ||
+      (!isQuoted &&
+        candidate.endsWith('.au3') &&
+        !candidate.includes('\\') &&
+        !candidate.includes('/'))
+    ) {
+      try {
+        const libPath = findFilepath(candidate, true); // Search library paths first
+        if (libPath && typeof libPath === 'string') {
+          return normalizePath(libPath);
+        }
+      } catch (e) {
+        window.showInformationMessage(
+          `getIncludePath findFilepath library error: ${candidate} ${e}`,
+        );
+      }
+    }
+
+    // For quoted includes or when library search failed, try relative to document
+    let resolved = '';
+    try {
+      const docFsPath =
+        document && document.uri && document.uri.fsPath
+          ? document.uri.fsPath
+          : (document && document.fileName) || '';
+      const baseDir = docFsPath ? path.dirname(docFsPath) : process.cwd();
+      resolved = path.resolve(baseDir, candidate);
+    } catch {
+      // ignore
+    }
+
+    // If a file exists at resolved path, return it
+    try {
+      if (resolved && fs.existsSync(resolved)) {
+        return normalizePath(resolved);
+      }
+    } catch {
+      window.showInformationMessage(`getIncludePath existsSync error: ${resolved}`);
+    }
+
+    // Use include search paths as fallback
+    try {
+      const libPath = findFilepath(candidate, false); // Search user paths
+      if (libPath && typeof libPath === 'string') {
+        return normalizePath(libPath);
+      }
+    } catch (e) {
+      window.showInformationMessage(
+        `getIncludePath findFilepath fallback error: ${candidate} ${e}`,
+      );
+    }
+
+    // Fallback: normalized of what we had resolved or candidate
+    return normalizePath(resolved || candidate);
+  } catch (err) {
+    window.showInformationMessage(`getIncludePath error: ${err}`);
+    return '';
   }
-
-  includePath = includePath.charAt(0).toUpperCase() + includePath.slice(1);
-
-  return includePath;
 };
 
 let parenTriggerOn = workspace.getConfiguration('autoit').get('enableParenTriggerForFunctions');
@@ -172,44 +324,93 @@ const signatureToCompletion = (signatures, kind, detail) => {
 
 /**
  * Generates an array of Include scripts to search
- * that includes the full range of the region's body
- * @param {TextDocument} document The current document to search
+ * Supports circular dependency protection and .au3 filtering.
+ * Maintains API compatibility with existing call sites.
+ * @param {import('vscode').TextDocument} document The current document to search
  * @param {String} docText The text from the document
- * @param {Array} scriptsToSearch The destination array
- * @returns SymbolInformation
+ * @param {Array} scriptsToSearch The destination array (unique, stable order)
+ * @returns {void}
  */
 const getIncludeScripts = (document, docText, scriptsToSearch) => {
-  const relativeInclude = /^\s*#include\s"(.+)"/gm;
-  const libraryInclude = /^\s*#include\s<(.+)>/gm;
-  let includeFile;
-  let scriptContent;
+  try {
+    const relativeInclude = /^\s*#include\s"(.+)"/gm;
+    const libraryInclude = /^\s*#include\s<(.+)>/gm;
 
-  let found = relativeInclude.exec(docText);
-  while (found) {
-    // Check if file exists in document directory
-    includeFile = getIncludePath(found[1], document);
-    if (!fs.existsSync(includeFile)) {
-      // Find first instance using include paths
-      includeFile = findFilepath(found[1], false);
+    // Maintain a visited set across recursion attached to the array for API compatibility
+    // Use a non-enumerable property to avoid affecting consumer iteration
+    const _scripts = /** @type {any} */ (scriptsToSearch);
+    let visited = _scripts && _scripts.__visitedSet;
+    if (!visited) {
+      visited = new Set();
+      Object.defineProperty(_scripts, '__visitedSet', {
+        value: visited,
+        enumerable: false,
+        configurable: true,
+        writable: false,
+      });
     }
-    if (includeFile && scriptsToSearch.indexOf(includeFile) === -1) {
-      scriptsToSearch.push(includeFile);
-      scriptContent = getIncludeText(includeFile);
-      getIncludeScripts(document, scriptContent, scriptsToSearch);
-    }
-    found = relativeInclude.exec(docText);
-  }
 
-  found = libraryInclude.exec(docText);
-  while (found) {
-    // Find first instance using include paths
-    includeFile = findFilepath(found[1], false);
-    if (includeFile && scriptsToSearch.indexOf(includeFile) === -1) {
-      scriptsToSearch.push(includeFile);
-      scriptContent = getIncludeText(includeFile);
-      getIncludeScripts(document, scriptContent, scriptsToSearch);
+    const processInclude = (incRaw, isLibrary = false) => {
+      try {
+        if (!incRaw) return;
+        // Add angle brackets back for library includes to help getIncludePath distinguish them
+        const pathToResolve = isLibrary ? `<${incRaw}>` : incRaw;
+        // Resolve path using getIncludePath and library search
+        let p = getIncludePath(pathToResolve, document);
+        if (!p) {
+          try {
+            const alt = findFilepath(incRaw, isLibrary);
+            if (alt && typeof alt === 'string') p = alt;
+          } catch (e) {
+            window.showInformationMessage(`findFilepath error for ${incRaw} ${e}`);
+          }
+        }
+        if (!p) return;
+
+        const normalized = normalizePath(p);
+        if (!normalized) return;
+
+        // Only .au3 files
+        if (path.extname(normalized).toLowerCase() !== '.au3') return;
+
+        if (visited.has(normalized)) return;
+
+        // Check readability
+        try {
+          if (!fs.existsSync(normalized)) return;
+        } catch (e) {
+          window.showInformationMessage(`existsSync error for ${normalized} ${e}`);
+          return;
+        }
+
+        // stable-order uniqueness
+        if (scriptsToSearch.indexOf(normalized) === -1) {
+          scriptsToSearch.push(normalized);
+        }
+        visited.add(normalized);
+
+        // Recurse using file content
+        const txt = getIncludeText(normalized);
+        if (!txt) return;
+        getIncludeScripts(document, txt, scriptsToSearch);
+      } catch (e) {
+        window.showInformationMessage(`processInclude error: ${incRaw} ${e}`);
+      }
+    };
+
+    let found = relativeInclude.exec(docText);
+    while (found) {
+      processInclude(found[1], false);
+      found = relativeInclude.exec(docText);
     }
+
     found = libraryInclude.exec(docText);
+    while (found) {
+      processInclude(found[1], true);
+      found = libraryInclude.exec(docText);
+    }
+  } catch (err) {
+    window.showInformationMessage(`getIncludeScripts error: ${err}`);
   }
 };
 
@@ -267,7 +468,7 @@ const getParams = (paramText, text, headerIndex) => {
 const getHeaderRegex = functionName =>
   new RegExp(
     `;\\s*Name\\s*\\.+:\\s+${functionName}\\s*[\r\n]` +
-      `;\\s+Description\\s*\\.+:\\s+(?<description>.+)[\r\n]`,
+      ';\\s+Description\\s*\\.+:\\s+(?<description>.+)[\r\n]',
   );
 
 /**
@@ -299,7 +500,7 @@ const buildFunctionSignature = (functionMatch, fileText, fileName) => {
 /**
  * Returns an object of AutoIt functions found within a VSCode TextDocument
  * @param {string} fileName The name of the AutoIt script
- * @param {vscode.TextDocument} doc The  TextDocument object representing the AutoIt script
+ * @param {import('vscode').TextDocument} doc The  TextDocument object representing the AutoIt script
  * @returns {Object} Object containing SignatureInformation objects
  */
 const getIncludeData = (fileName, doc) => {
@@ -308,7 +509,10 @@ const getIncludeData = (fileName, doc) => {
 
   if (!fs.existsSync(filePath)) {
     // Find first instance using include paths
-    filePath = findFilepath(fileName, false);
+    const foundPath = findFilepath(fileName, false);
+    if (foundPath && typeof foundPath === 'string') {
+      filePath = foundPath;
+    }
   }
   let functionMatch = null;
   const fileData = getIncludeText(filePath);
@@ -351,4 +555,5 @@ module.exports = {
   getIncludeScripts,
   buildFunctionSignature,
   functionDefinitionRegex,
+  setRegExpFlags,
 };

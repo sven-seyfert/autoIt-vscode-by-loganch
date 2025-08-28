@@ -75,10 +75,67 @@ const conf = {
 
 const listeners = new Map();
 let listenerId = 0;
-let aiPath = '';
+let aiPath = { path: '', dir: '', file: '', isRelative: false };
 let bNoEvents;
 const isWinOS = process.platform === 'win32';
 let showErrors = false;
+
+/**
+ * Attempts to auto-detect AutoIt installation paths on Windows
+ * @returns {string[]} Array of potential AutoIt installation paths
+ */
+function detectAutoItPaths() {
+  if (!isWinOS) return [];
+
+  const potentialPaths = [
+    'C:\\Program Files (x86)\\AutoIt3',
+    'C:\\Program Files\\AutoIt3',
+    'C:\\AutoIt3',
+    process.env.PROGRAMFILES ? `${process.env.PROGRAMFILES}\\AutoIt3` : null,
+    process.env['PROGRAMFILES(X86)'] ? `${process.env['PROGRAMFILES(X86)']}\\AutoIt3` : null,
+  ].filter(Boolean);
+
+  // Check registry for AutoIt installation path
+  if (isWinOS) {
+    try {
+      const { execSync } = require('child_process');
+      try {
+        const regResult = execSync(
+          'reg query "HKLM\\SOFTWARE\\AutoIt v3\\AutoIt" /v InstallDir 2>nul',
+          { encoding: 'utf8' },
+        );
+        const match = regResult.match(/InstallDir\s+REG_SZ\s+(.+)/);
+        if (match && match[1]) {
+          potentialPaths.unshift(match[1].trim());
+        }
+      } catch {
+        // Try 32-bit registry view
+        try {
+          const regResult32 = execSync(
+            'reg query "HKLM\\SOFTWARE\\WOW6432Node\\AutoIt v3\\AutoIt" /v InstallDir 2>nul',
+            { encoding: 'utf8' },
+          );
+          const match32 = regResult32.match(/InstallDir\s+REG_SZ\s+(.+)/);
+          if (match32 && match32[1]) {
+            potentialPaths.unshift(match32[1].trim());
+          }
+        } catch {
+          // Registry queries failed, use default paths
+        }
+      }
+    } catch {
+      // execSync not available or failed, use default paths
+    }
+  }
+
+  return potentialPaths.filter(p => {
+    try {
+      return p && fs.existsSync(path.join(p, 'AutoIt3.exe'));
+    } catch {
+      return false;
+    }
+  });
+}
 
 function splitPath(_path) {
   _path = _path
@@ -164,8 +221,7 @@ function showError(sPath, data, msgSuffix) {
 }
 
 function verifyPath(sPath, data, msgSuffix) {
-  return workspace.fs
-    .stat(Uri.file(data.fullPath))
+  return Promise.resolve(workspace.fs.stat(Uri.file(data.fullPath)))
     .then(stats => {
       const type =
         (data.file !== undefined ? FileType.File : FileType.Directory) | FileType.SymbolicLink;
@@ -184,6 +240,7 @@ function verifyPath(sPath, data, msgSuffix) {
     })
     .catch(() => {
       if (showErrors) showError(sPath, data, msgSuffix);
+      return undefined;
     });
 }
 
@@ -197,6 +254,7 @@ function updateFullPath(_path, data, msgSuffix) {
 
 const config = new Proxy(conf, {
   get(target, prop) {
+    if (typeof prop !== 'string') return undefined;
     const val = target.defaultPaths[prop];
     if (val) {
       const isArray = Array.isArray(val);
@@ -208,7 +266,9 @@ const config = new Proxy(conf, {
     return target.data[prop];
   },
   set(target, prop, val) {
-    return target.data.update(prop, val);
+    if (typeof prop !== 'string') return false;
+    target.data.update(prop, val);
+    return true;
   },
 });
 
@@ -238,6 +298,21 @@ const findFilepath = (file, library = true) => {
   if (pathFound && newPath) {
     return newPath;
   }
+
+  // If not found, always try auto-detection as fallback
+  if (!pathFound) {
+    const detectedPaths = detectAutoItPaths();
+    for (const autoItPath of detectedPaths) {
+      const includePath = path.join(autoItPath, 'Include');
+      if (fs.existsSync(includePath)) {
+        newPath = path.join(includePath, file);
+        if (fs.existsSync(newPath)) {
+          return newPath;
+        }
+      }
+    }
+  }
+
   return false;
 };
 
@@ -286,12 +361,48 @@ function getPathsSmartHelp(defaultPath, confValue, i) {
 function getPaths() {
   aiPath = splitPath(conf.data.aiPath || '');
 
+  // Auto-detect AutoIt installation if no aiPath is configured
+  if (!aiPath.dir || aiPath.dir === '' || aiPath.dir === '\\') {
+    const detectedPaths = detectAutoItPaths();
+    if (detectedPaths.length > 0) {
+      aiPath = splitPath(detectedPaths[0]);
+    }
+  }
+
   for (const i in conf.defaultPaths) {
     if (!Object.hasOwn(conf.defaultPaths, i)) continue;
     const defaultPath = conf.defaultPaths[i];
     const confValue = conf.data[i];
 
-    if (i === 'smartHelp') {
+    if (i === 'includePaths') {
+      // Enhanced include path handling with auto-detection
+      if (Array.isArray(confValue)) {
+        for (let j = 0; j < confValue.length; j++) {
+          let sPath = (typeof confValue[j] === 'string' ? confValue[j] : '').trim();
+
+          if (sPath === '') sPath = 'Include';
+
+          if (defaultPath[j] === undefined)
+            defaultPath[j] = Object.assign({ fullPath: '' }, defaultPath[0].check);
+
+          updateFullPath(sPath, defaultPath[j], `${i}[${j}]`);
+        }
+      }
+
+      // Always add auto-detected AutoIt include paths as fallback
+      const detectedPaths = detectAutoItPaths();
+      detectedPaths.forEach((autoItPath, idx) => {
+        const includePath = path.join(autoItPath, 'Include');
+        if (fs.existsSync(includePath)) {
+          // Add to the end so user configured paths take precedence
+          const nextIndex = confValue && confValue.length > 0 ? confValue.length + idx : idx;
+          if (defaultPath[nextIndex] === undefined) {
+            defaultPath[nextIndex] = Object.assign({ fullPath: '' }, { dir: '', file: undefined });
+          }
+          defaultPath[nextIndex].fullPath = includePath;
+        }
+      });
+    } else if (i === 'smartHelp') {
       if (Array.isArray(confValue))
         // convert array-based old config into new object-based
         return upgradeSmartHelpConfig();
@@ -377,7 +488,7 @@ function addListener(listener) {
 }
 
 function removeListener(id) {
-  listeners.remove(id);
+  listeners.delete(id);
 }
 
 function noEvents(value) {
