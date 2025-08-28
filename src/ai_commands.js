@@ -5,7 +5,7 @@ import fs from 'fs';
 import { decode } from 'iconv-lite';
 import { parse } from 'jsonc-parser';
 import { performance } from 'perf_hooks';
-import { findFilepath, getIncludeText, functionDefinitionRegex } from './util';
+import { findFilepath, getIncludeText, functionDefinitionRegex, setRegExpFlags } from './util';
 import conf from './ai_config';
 import { commandsList as _commandsList, commandsPrefix } from './commandsList';
 import { showInformationMessage, showErrorMessage, messages } from './ai_showMessage';
@@ -1072,7 +1072,7 @@ const insertHeader = () => {
   const lineText = doc.lineAt(currentLine).text;
   const { UDFCreator } = config;
 
-  const findFunc = functionDefinitionRegex.setFlags('i');
+  const findFunc = setRegExpFlags(functionDefinitionRegex, 'i');
   const found = findFunc.exec(lineText);
 
   if (found === null) {
