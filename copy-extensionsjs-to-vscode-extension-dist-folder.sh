@@ -21,3 +21,6 @@ else
 fi
 
 echo -e "\ncopy-extensionsjs-to-vscode-extension-dist-folder.sh done"
+
+# Reference:
+# https://github.com/sven-seyfert/autoIt-vscode-by-loganch/compare/master...develop
