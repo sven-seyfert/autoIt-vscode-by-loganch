@@ -12,7 +12,7 @@ import goToDefinitionFeature from './ai_definition';
 
 import { registerCommands } from './registerCommands';
 import { formatterProvider } from './ai_formatter';
-import { parseAu3CheckOutput } from './diagnosticUtils';
+import { parseAu3CheckOutput, clearDiagnosticsOwnedBy } from './diagnosticUtils';
 import conf from './ai_config';
 
 const { config } = conf;
@@ -22,7 +22,7 @@ const { config } = conf;
  * @param {TextDocument} document - The document to run the AU3Check process on.
  * @returns {Promise<string>} A promise that resolves with the console output of the check process.
  */
-const runCheckProcess = document => {
+const runCheckProcess = (document) => {
   return new Promise((resolve, reject) => {
     let consoleOutput = '';
     const params = [
@@ -44,7 +44,7 @@ const runCheckProcess = document => {
     ];
 
     // Add -I for each include path
-    config.includePaths.forEach(path => {
+    config.includePaths.forEach((path) => {
       params.push('-I', path);
     });
 
@@ -66,14 +66,14 @@ const runCheckProcess = document => {
       cwd: dirname(document.fileName),
     });
 
-    checkProcess.stdout.on('data', data => {
+    checkProcess.stdout.on('data', (data) => {
       if (data.length === 0) {
         return;
       }
       consoleOutput += data.toString();
     });
 
-    checkProcess.stderr.on('error', error => {
+    checkProcess.stderr.on('error', (error) => {
       reject(error);
     });
 
@@ -83,11 +83,11 @@ const runCheckProcess = document => {
   });
 };
 
-const handleCheckProcessError = error => {
+const handleCheckProcessError = (error) => {
   window.showErrorMessage(`${config.checkPath} ${error}`);
 };
 
-const validateCheckPath = checkPath => {
+const validateCheckPath = (checkPath) => {
   if (!existsSync(checkPath)) {
     window.showErrorMessage(
       'Invalid Check Path! Please review AutoIt settings (Check Path in UI, autoit.checkPath in JSON)',
@@ -144,7 +144,7 @@ const checkAutoItCode = async (document, diagnosticCollection) => {
   }
 };
 
-export const activate = ctx => {
+export const activate = (ctx) => {
   const features = [
     hoverFeature,
     completionFeature,
@@ -170,12 +170,43 @@ export const activate = ctx => {
     const diagnosticCollection = languages.createDiagnosticCollection('autoit');
     ctx.subscriptions.push(diagnosticCollection);
 
-    workspace.onDidSaveTextDocument(document => checkAutoItCode(document, diagnosticCollection));
-    workspace.onDidOpenTextDocument(document => checkAutoItCode(document, diagnosticCollection));
-    workspace.onDidCloseTextDocument(document => {
-      diagnosticCollection.delete(document.uri);
+    workspace.onDidSaveTextDocument((document) => checkAutoItCode(document, diagnosticCollection));
+    workspace.onDidOpenTextDocument((document) => checkAutoItCode(document, diagnosticCollection));
+    workspace.onDidCloseTextDocument((document) => {
+      // First remove all diagnostics owned by the closing document (including in included files)
+      try { clearDiagnosticsOwnedBy(diagnosticCollection, document.uri); } catch (err) {
+        // Optional debug logging to help diagnose cleanup failures without breaking the extension
+        try {
+          const cfg = workspace.getConfiguration('autoit');
+          const dbg = cfg?.get?.('debugLogging') === true;
+          const msg = `[AutoIt][extension] clearDiagnosticsOwnedBy failed during document close for ${document?.uri?.toString?.() ?? document?.fileName ?? 'unknown'}: ${err?.message ?? err}`;
+          if (dbg) {
+            // eslint-disable-next-line no-console
+            console.debug(msg);
+          }
+        } catch {
+          // swallow any logging errors
+        }
+      }
+      // Then remove any remaining diagnostics specifically for the closed document
+      try {
+        diagnosticCollection.delete(document.uri);
+      } catch (err) {
+        // Optional debug logging for delete failures
+        try {
+          const cfg = workspace.getConfiguration('autoit');
+          const dbg = cfg?.get?.('debugLogging') === true;
+          const msg = `[AutoIt][extension] diagnosticCollection.delete failed during document close for ${document?.uri?.toString?.() ?? document?.fileName ?? 'unknown'}: ${err?.message ?? err}`;
+          if (dbg) {
+            // eslint-disable-next-line no-console
+            console.debug(msg);
+          }
+        } catch {
+          // swallow any logging errors
+        }
+      }
     });
-    window.onDidChangeActiveTextEditor(editor => {
+    window.onDidChangeActiveTextEditor((editor) => {
       if (editor) {
         checkAutoItCode(editor.document, diagnosticCollection);
       }
