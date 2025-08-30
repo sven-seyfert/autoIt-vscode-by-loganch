@@ -1,3 +1,5 @@
+import { join } from 'path';
+import { readdirSync, statSync } from 'fs';
 import { languages, Location, Position, Range, Uri, window } from 'vscode';
 import { AUTOIT_MODE, getIncludePath, getIncludeText, getIncludeScripts } from './util';
 
@@ -244,7 +246,55 @@ const AutoItDefinitionProvider = {
         throw new ValidationError('Lookup text must be a non-empty string');
       }
 
-      const scriptsToSearch = [];
+      function searchForPath(directoryName) {
+        const file = document.fileName;
+        const filePathParts = file.split('\\');
+
+        for (let index = filePathParts.length - 1; index >= 0; index--) {
+          if (filePathParts[index] !== directoryName) {
+            filePathParts.splice(index, 1);
+          } else {
+            break;
+          }
+        }
+
+        return filePathParts.join('\\');
+      }
+
+      function getAu3FilesOfDirectoryRecursive(currentDir) {
+        let files;
+        let fileList = [];
+
+        try {
+          files = readdirSync(currentDir);
+        } catch (error) {
+          return fileList;
+        }
+
+        files.forEach((file) => {
+          const filePath = join(currentDir, file);
+          const fileStat = statSync(filePath);
+
+          if (fileStat.isFile() && file.endsWith('.au3')) {
+            if (!file.endsWith('_stripped.au3')) {
+              fileList.push(filePath);
+            }
+          } else if (fileStat.isDirectory()) {
+            fileList = fileList.concat(getAu3FilesOfDirectoryRecursive(filePath));
+          }
+        });
+
+        return fileList;
+      }
+
+      const srcDirectory = searchForPath('src');
+      const libDirectory = searchForPath('src').replace('src', 'lib');
+      const filesOfSrcDir = getAu3FilesOfDirectoryRecursive(srcDirectory);
+      const filesOfLibDir = getAu3FilesOfDirectoryRecursive(libDirectory);
+
+      let scriptsToSearch = [];
+      scriptsToSearch = filesOfSrcDir.concat(filesOfLibDir);
+
       const mockResult = getIncludeScripts(document, docText, scriptsToSearch);
       // Handle both mock (returns array) and real function (populates by reference)
       const scripts = Array.isArray(mockResult) ? mockResult : scriptsToSearch;

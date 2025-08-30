@@ -748,7 +748,8 @@
     "precommit": "npm run lint && npm run test:quick-flaky && npm test",
     "webpack": "webpack --mode development",
     "webpack-dev": "webpack --mode development --watch",
-    "vscode:prepublish": "webpack --mode production"
+    "vscode:prepublish": "webpack --mode production",
+    "build": "npm run vscode:prepublish && bash ./copy-extensionsjs-to-vscode-extension-dist-folder.sh"
   },
   "jest": {
     "testEnvironment": "node",
