@@ -9,7 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Added support for running the Format Document command via the Command Palette or hotkey using Tidy.exe on scripts, including automatic formatting on save.
+- Support for running the Format Document command via the Command Palette or hotkey using Tidy.exe on scripts, including automatic formatting on save
+- Jest testing framework with test suite for language features and services
+
+### Changed
+
+- Refactored monolithic command code
+- Upgraded build toolchain
+
+### Fixed
+
+- Diagnostic system overhaul with proper encoding handling for Au3Check
+- Restored Go to Definition functionality for symbols declared outside of current script
+- Restored Open Include file (Alt+i) functionality
+- Path handling improvements
+- Completion provider accuracy with user-defined functions
 
 ## [1.0.14] - 2025-07-31
 
