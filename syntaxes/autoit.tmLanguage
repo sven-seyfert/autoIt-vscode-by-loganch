@@ -235,7 +235,6 @@
         <key>match</key>
         <string>(?x)
           (?:0x\h+) |                  # Hex
-          (?:0b[01]+) |                # Binary
           (?:-?(?:\d+\.?\d*|\.\d+))    # Decimal
           (?:[eE][-+]?\d+)?            # Optional exponent
         </string>
