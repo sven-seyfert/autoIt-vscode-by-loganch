@@ -267,11 +267,11 @@ const AutoItDefinitionProvider = {
 
         try {
           files = readdirSync(currentDir);
-        } catch (error) {
+        } catch {
           return fileList;
         }
 
-        files.forEach((file) => {
+        files.forEach(file => {
           const filePath = join(currentDir, file);
           const fileStat = statSync(filePath);
 
