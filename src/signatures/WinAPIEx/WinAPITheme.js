@@ -1,4 +1,5 @@
-import { br, signatureToHover, opt } from '../../util';
+import { CompletionItemKind } from 'vscode';
+import { br, opt, signatureToHover, signatureToCompletion } from '../../util';
 
 const include = '`#include <WinAPITHeme.au3>`';
 
@@ -62,7 +63,8 @@ const commonParams = {
 const signatures = {
   _WinAPI_BeginBufferedPaint: {
     documentation: `Begins a buffered paint operation ${include}`,
-    label: `_WinAPI_BeginBufferedPaint ( $hDC, $tTarget, ByRef $hNewDC, [$iFormat] = 0, [$iFlags] = 0, [$tExclude] = 0, [$iAlpha] = -1 )`,
+    label:
+      '_WinAPI_BeginBufferedPaint ( $hDC, $tTarget, ByRef $hNewDC, [$iFormat] = 0, [$iFlags] = 0, [$tExclude] = 0, [$iAlpha] = -1 )',
     params: [
       {
         label: '$hDC',
@@ -189,7 +191,7 @@ const signatures = {
       commonParams.hDC,
       {
         label: '$tRECT',
-        documentation: `\`$tagRECT\` structure that contains the rectangle.`,
+        documentation: '`$tagRECT` structure that contains the rectangle.',
       },
       {
         label: '$iEdge',
@@ -943,5 +945,6 @@ const signatures = {
 };
 
 const hovers = signatureToHover(signatures);
+const completions = signatureToCompletion(signatures, CompletionItemKind.Function, include);
 
-export { signatures as default, hovers };
+export { signatures as default, completions, hovers };

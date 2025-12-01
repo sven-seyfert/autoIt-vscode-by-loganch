@@ -1,4 +1,4 @@
-import { Diagnostic, DiagnosticSeverity, Range, Position, Uri, workspace, window } from 'vscode';
+import { Diagnostic, DiagnosticSeverity, Position, Range, Uri, window, workspace } from 'vscode';
 
 /**
  * Returns the diagnostic severity based on the severity string.
@@ -250,7 +250,6 @@ const filterDiagnosticsOnUriByOwner = (collection, uri, owner) => {
           const ch = window.createOutputChannel('AutoIt');
           ch.appendLine(msg);
         } else {
-          // eslint-disable-next-line no-console
           console.debug(msg);
         }
       }
@@ -285,7 +284,6 @@ export const clearDiagnosticsOwnedBy = (collection, ownerUri) => {
           const ch = window.createOutputChannel('AutoIt');
           ch.appendLine(msg);
         } else {
-          // eslint-disable-next-line no-console
           console.debug(msg);
         }
       }
@@ -314,7 +312,6 @@ export const clearDiagnosticsOwnedBy = (collection, ownerUri) => {
           const ch = window.createOutputChannel('AutoIt');
           ch.appendLine(msg);
         } else {
-          // eslint-disable-next-line no-console
           console.debug(msg);
         }
       }

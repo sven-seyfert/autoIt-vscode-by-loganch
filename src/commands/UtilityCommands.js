@@ -1,3 +1,4 @@
+import { globalOutputChannel } from './ScriptCommands.js';
 const { window, Position, Uri } = require('vscode');
 const path = require('path');
 const fs = require('fs');
@@ -6,7 +7,19 @@ const { findFilepath, functionDefinitionRegex, setRegExpFlags } = require('../ut
 
 import aiConfig from '../ai_config';
 const { config } = aiConfig;
-const aiOutCommon = window.createOutputChannel('AutoIt (global)', 'vscode-autoit-output');
+const aiOutCommon = globalOutputChannel;
+
+/** @type {number} Length of double underscore prefix for internal functions. */
+const DOUBLE_UNDERSCORE_LENGTH = 2;
+
+/** @type {number} Length of the 'byref' keyword. */
+const BYREF_KEYWORD_LENGTH = 5;
+
+/** @type {number} Length of the byref prefix including keyword and spacing. */
+const BYREF_PREFIX_LENGTH = 6;
+
+/** @type {number} Padding length for parameter names in documentation. */
+const PARAMETER_PAD_LENGTH = 21;
 
 const runners = {
   isAiOutVisible() {
@@ -202,7 +215,9 @@ const insertHeader = () => {
     }
 
     const hdrType =
-      found[2].substring(0, 2) === '__' ? '#INTERNAL_USE_ONLY# ' : '#FUNCTION# =========';
+      found[2].substring(0, DOUBLE_UNDERSCORE_LENGTH) === '__'
+        ? '#INTERNAL_USE_ONLY# '
+        : '#FUNCTION# =========';
     let syntaxBegin = `${found[2]}(`;
     let syntaxEnd = ')';
     let paramsOut = 'None';
@@ -217,13 +232,13 @@ const insertHeader = () => {
           syntaxEnd = `]${syntaxEnd}`;
         }
         let byref = '';
-        if (parameter.substring(0, 5).toLowerCase() === 'byref') {
+        if (parameter.substring(0, BYREF_KEYWORD_LENGTH).toLowerCase() === 'byref') {
           byref = 'ByRef ';
-          parameter = parameter.substring(6).trim(); // strip off byref keyword
+          parameter = parameter.substring(BYREF_PREFIX_LENGTH).trim(); // strip off byref keyword
           tag += '[in/out] ';
         }
         syntaxBegin += (index ? ', ' : '') + byref + parameter;
-        return parameter.split(' ')[0].padEnd(21).concat(tag);
+        return parameter.split(' ')[0].padEnd(PARAMETER_PAD_LENGTH).concat(tag);
       });
       const paramPrefix = '\n;                  ';
       paramsOut = params.join(paramPrefix);

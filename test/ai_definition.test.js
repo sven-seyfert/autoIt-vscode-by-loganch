@@ -1,4 +1,3 @@
-/* eslint-disable no-console */
 /**
  * ai_definition.test.js
  * End-to-end function-level tests for src/ai_definition.js using Jest with mocked VS Code API and util/fs.
@@ -133,7 +132,7 @@ class MockTextDocument {
     const text = this._text;
     const pattern = regex || /\$?[A-Za-z_][A-Za-z0-9_]*/g;
     // scan the line containing position
-    const line = pos.line;
+    const { line } = pos;
     const lineStart = this._lineOffsets[line];
     const nextLineStart =
       line + 1 < this._lineOffsets.length ? this._lineOffsets[line + 1] : text.length;

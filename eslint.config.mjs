@@ -1,94 +1,108 @@
 import js from '@eslint/js';
-import prettier from 'eslint-plugin-prettier';
 import prettierConfig from 'eslint-config-prettier';
+import importPlugin from 'eslint-plugin-import';
+import prettier from 'eslint-plugin-prettier';
+import globals from 'globals';
 
 export default [
   js.configs.recommended,
+  prettierConfig,
   {
-    files: ['**/*.js'],
+    files: ['**/*.js', '**/*.mjs', '**/*.cjs'],
     languageOptions: {
       ecmaVersion: 2024,
       sourceType: 'module',
       globals: {
-        console: 'readonly',
-        process: 'readonly',
-        Buffer: 'readonly',
-        __dirname: 'readonly',
-        __filename: 'readonly',
-        module: 'readonly',
-        require: 'readonly',
-        exports: 'readonly',
-        global: 'readonly',
-        setTimeout: 'readonly',
-        clearTimeout: 'readonly',
-        setInterval: 'readonly',
-        clearInterval: 'readonly',
-        setImmediate: 'readonly',
-        clearImmediate: 'readonly',
-        // Jest globals
-        describe: 'readonly',
-        it: 'readonly',
-        test: 'readonly',
-        expect: 'readonly',
-        beforeEach: 'readonly',
-        afterEach: 'readonly',
-        beforeAll: 'readonly',
-        afterAll: 'readonly',
-        jest: 'readonly',
+        ...globals.node,
+        ...globals.jest,
       },
     },
     plugins: {
       prettier,
+      import: importPlugin,
     },
     rules: {
-      ...prettierConfig.rules,
+      // Prettier
       'prettier/prettier': ['error', { endOfLine: 'auto' }],
-      'prefer-template': 'off',
-      'no-plusplus': 'off',
-      'no-continue': 'off',
-      'no-param-reassign': 'off',
-      'no-restricted-syntax': 'off',
-      'no-bitwise': 'off',
+
+      // Code style
       'no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
-      'no-console': 'warn',
       'prefer-const': 'error',
       'no-var': 'error',
       'object-shorthand': 'error',
       'prefer-arrow-callback': 'error',
-      'arrow-spacing': 'error',
-      'block-spacing': 'error',
-      'brace-style': ['error', '1tbs', { allowSingleLine: true }],
-      'comma-dangle': ['error', 'always-multiline'],
-      'comma-spacing': 'error',
-      'comma-style': 'error',
-      'computed-property-spacing': 'error',
-      'eol-last': 'error',
-      'func-call-spacing': 'error',
-      'indent': ['error', 2, { SwitchCase: 1 }],
-      'key-spacing': 'error',
-      'keyword-spacing': 'error',
-      'linebreak-style': 'off',
-      'no-multiple-empty-lines': ['error', { max: 2, maxEOF: 1 }],
-      'no-trailing-spaces': 'error',
-      'object-curly-spacing': ['error', 'always'],
-      'quotes': ['error', 'single', { avoidEscape: true }],
-      'semi': ['error', 'always'],
-      'semi-spacing': 'error',
-      'space-before-blocks': 'error',
-      'space-before-function-paren': ['error', { anonymous: 'always', named: 'never', asyncArrow: 'always' }],
-      'space-in-parens': 'error',
-      'space-infix-ops': 'error',
-      'space-unary-ops': 'error'
+
+      // Import rules
+      'import/no-unresolved': 'error',
+      'import/named': 'error',
+      'import/default': 'error',
+      'import/namespace': 'error',
+      'import/no-absolute-path': 'error',
+      'import/no-dynamic-require': 'warn',
+      'import/no-self-import': 'error',
+      'import/no-cycle': 'error',
+      'import/no-useless-path-segments': 'error',
+
+      // Variables
+      'no-shadow': 'error',
+      'no-duplicate-imports': 'error',
+      'no-unused-expressions': 'error',
+
+      // Async/Await
+      'no-return-await': 'error',
+      'require-await': 'error',
+
+      // Best practices
+      'no-new': 'warn',
+      'no-alert': 'warn',
+      'no-eq-null': 'error',
+      eqeqeq: ['error', 'always'],
+      'no-empty': ['error', { allowEmptyCatch: true }],
+      'no-empty-function': ['error', { allow: ['arrowFunctions', 'functions', 'methods'] }],
+      'no-implicit-globals': 'error',
+      'no-invalid-this': 'error',
+      'no-loop-func': 'error',
+      'no-magic-numbers': ['warn', { ignore: [0, 1, -1], ignoreArrayIndexes: true }],
+      'no-multi-assign': 'error',
+      'no-nested-ternary': 'error',
+      'no-return-assign': 'error',
+      'no-throw-literal': 'error',
+      'no-unmodified-loop-condition': 'error',
+      'no-unneeded-ternary': 'error',
+      'no-useless-call': 'error',
+      'no-useless-concat': 'error',
+      'no-useless-return': 'error',
+
+      // ES6+ features
+      'prefer-destructuring': ['error', { object: true, array: false }],
+      'prefer-object-spread': 'error',
+      'prefer-promise-reject-errors': 'error',
+      'prefer-regex-literals': 'error',
+      'prefer-rest-params': 'error',
+      'prefer-spread': 'error',
+
+      // Strict mode
+      strict: ['error', 'global'],
+
+      // Symbols
+      'symbol-description': 'error',
+
+      // Variables declaration
+      'vars-on-top': 'error',
+
+      // Comparisons
+      yoda: 'error',
     },
     settings: {
-      'import/core-modules': ['vscode']
-    }
+      'import/core-modules': ['vscode'],
+      'import/resolver': {
+        node: {
+          extensions: ['.js', '.mjs', '.cjs'],
+        },
+      },
+    },
   },
   {
-    ignores: [
-      'dist/',
-      'node_modules/',
-      '*.min.js'
-    ]
-  }
+    ignores: ['dist/', 'node_modules/', '*.min.js'],
+  },
 ];

@@ -5,6 +5,87 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Map variable IntelliSense** - Intelligent key completions when accessing AutoIt Map variables
+  - Shows available keys when typing a Map variable name (e.g., typing `$map` shows known keys)
+  - Tracks Map keys across your workspace and included files
+  - Works with both direct assignments (`$map["key"] = value`) and declarations with initial keys
+  - Configuration options to tune behavior:
+    - `autoit.maps.enableIntelligence` - Enable/disable Map intelligence (default: true)
+    - `autoit.maps.includeDepth` - Maximum depth for resolving #include files (default: 3, range: 0-10)
+    - `autoit.maps.showFunctionKeys` - Show Map keys assigned in functions (default: true)
+  - See [docs/map-support.md](docs/map-support.md) for performance tuning recommendations
+
+### Changed
+
+- Enhanced README documentation with Map intelligence feature details
+
+## [1.3.0] - 2025-11-10
+
+### Added
+
+- COM object syntax highlighting for properties and methods using dot notation
+- Distinct token scopes for COM identifiers (`support.class.com.autoit`) to enable theme-specific styling
+- Contributors section to README.md with auto-updating contrib.rocks integration
+- Added missing AutoIt macros: `@exitMethod`, `@GUI_DropId`, and `@SW_ENABLE` to completions and hovers
+- AU3Check parameter parsing support with corresponding tests to improve syntax check behavior
+- Parameter validation and improved status messages in OutputChannelManager (#230)
+- WinNet API completions added to IntelliSense
+
+### Fixed
+
+- Function pattern incorrectly matching COM object methods (e.g., `$obj.Method()` now correctly identified as COM, not function)
+- Incorrect documentation for `@GUI_CtrlId` macro (now correctly states "Last click GUI Control identifier" instead of "Drag GUI Control identifier")
+- Duplicate WinNet signature removed and WinAPI COM signatures added to signature/hover data
+- Incorrect CRLF constant definition corrected
+- Duplicate parameter documentation entries removed in signature help provider
+- Removed stray duplicate (misspelled) `Clibpoard` completion entry
+- Improved parameter checks in `runCheckProcess` for more reliable regex matching
+
+### Changed
+
+- Consolidated macro data into single source of truth (`src/completions/macrosData.js`) to eliminate duplication and ensure consistency between completions and hovers
+- Converted `src/hovers/macros.json` to `src/hovers/macros.js` to import from unified macro data source
+
+## [1.2.0] - 2025-10-08
+
+### Added
+
+- File path validation to prevent path traversal attacks
+- Parameter safety warnings for `autoit.consoleParams` to detect potentially dangerous shell metacharacters
+- Workspace symbol performance optimizations with batch processing to prevent UI freezing on large projects
+- Configuration options `autoit.workspaceSymbolMaxFiles` (default: 500) and `autoit.workspaceSymbolBatchSize` (default: 10)
+- Configuration option `autoit.symbolMaxLines` (default: 50000) to control maximum lines processed for symbol information
+- Warning message when files exceed symbol processing limit with actionable instructions
+- Comprehensive unit tests for completion provider with 8 test cases
+- Comprehensive README documentation improvements with installation guide, quick start section, platform support matrix, troubleshooting guide, and reorganized configuration
+- Distribution scripts for packaging the extension to multiple marketplaces:
+  - `package-all.js` for simultaneous packaging to VS Code Marketplace and OpenVSX
+  - `package-openvsx.js` for OpenVSX-specific packaging with publisher name handling
+
+### Fixed
+
+- Command injection risk in registry update functionality by replacing `exec` with `execFile` for safer argument handling
+- Multiple global output panels opening for AutoIt on startup
+- Memory leak in completion provider where include cache grew indefinitely across document switches
+- Incorrect array comparison logic in completion cache invalidation
+- Cross-document contamination of completion items from include files
+
+### Changed
+
+- Simplified ESLint configuration by using globals package and removing redundant rules
+- Workspace symbol cache now uses incremental updates instead of full invalidation on file changes
+- Completion provider now uses per-document Map-based caching with LRU eviction (50 document limit)
+- Include cache automatically cleans up when documents are closed
+- Symbol processing limit increased from hardcoded 10,000 to configurable 50,000 lines by default
+
+### Removed
+
+- The unused `autoit.YAML-tmLanguage` file
+
 ## [1.1.0] - 2025-09-23
 
 ### Added
@@ -346,7 +427,7 @@ The IntelliSense release!
 
 ## 0.0.9
 
-- Running, compiling and building will now require the full install of SciTE4AutoIt3 (found [here](https://www.autoitscript.com/site/autoit-script-editor/downloads/)) in the default install location
+- Running, compiling, and building will now require the full install of SciTE4AutoIt3 (found [here](https://www.autoitscript.com/site/autoit-script-editor/downloads/) - the AutoIt script editor) in the default install location
 - Changed compile command to closer reflect SciTe4AutoIt3 version (Opens GUI)
 - Implemented build command, which works similar to previous compile command
 - Added console output for running, compiling and building scripts
@@ -364,6 +445,8 @@ The IntelliSense release!
 - Added the ability to generate a debug MsgBox for a highlighted variable or macro with Ctrl+Shift+D.
 - Added icon, banner color and description for marketplace.
 
+[1.3.0]: https://github.com/loganch/AutoIt-VSCode/compare/v1.2.0...v1.3.0
+[1.2.0]: https://github.com/loganch/AutoIt-VSCode/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/loganch/AutoIt-VSCode/compare/v1.0.14...v1.1.0
 [1.0.14]: https://github.com/loganch/AutoIt-VSCode/compare/v1.0.13...v1.0.14
 [1.0.13]: https://github.com/loganch/AutoIt-VSCode/compare/v1.0.12...v1.0.13

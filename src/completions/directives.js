@@ -1,4 +1,3 @@
-/* eslint-disable no-template-curly-in-string */
 import { CompletionItemKind, SnippetString } from 'vscode';
 import { completionToHover, fillCompletions } from '../util';
 
@@ -216,7 +215,11 @@ const versioningDirectives = [
   },
 ];
 
-const versioningDirectivesCompletionItems = fillCompletions(versioningDirectives);
+const versioningDirectivesCompletionItems = fillCompletions(
+  versioningDirectives,
+  CompletionItemKind.Keyword,
+  'Versioning Directive',
+);
 
 const wrapperDirectivesHovers = completionToHover(wrapperDirectivesCompletionItems);
 const au3StripperDirectivesHovers = completionToHover(au3StripperDirectivesCompletionItems);

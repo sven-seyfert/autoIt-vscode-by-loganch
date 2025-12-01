@@ -1,5 +1,17 @@
 const { window } = require('vscode');
 const { HOTKEY_LINE_DELAY_MS, NO_BREAK_SPACE } = require('../command_constants');
+// Constants to avoid magic numbers when checking for CRLF endings
+const CRLF = '\r\n';
+const CRLF_LENGTH = 2;
+/**
+ * Module-level cache for output channels keyed by channel name.
+ * This cache ensures singleton behavior for global channels (such as
+ * 'AutoIt (global)') so multiple callers receive the same OutputChannel
+ * instance. A simple module-level object is sufficient for typical VS Code
+ * extension activation flows and is safe for the single-threaded Node.js
+ * runtime used by extensions.
+ */
+const _cachedOutputChannels = {};
 
 /**
  * @typedef {Object} OutputOptions
@@ -17,7 +29,7 @@ class OutputFormattingStrategy {
    * @param {Object} _context - Formatting context
    * @returns {string[]} Formatted lines
    */
-  // eslint-disable-next-line no-unused-vars
+
   format(_lines, _context) {
     throw new Error('Strategy must implement format method');
   }
@@ -105,16 +117,38 @@ class MultiFormattingStrategy extends OutputFormattingStrategy {
 class OutputChannelManager {
   /**
    * Creates an instance of OutputChannelManager.
+   * @param {Object} globalOutputChannel - Global output channel singleton
    * @param {Object} config - Configuration object from ai_config
    * @param {Object} keybindings - Keybindings object for hotkey replacement
    * @param {Object} aWrapperHotkey - AutoIt3Wrapper hotkey manager
    * @param {Object} runners - Runners object for managing output state
    */
-  constructor(config, keybindings, aWrapperHotkey, runners) {
+  constructor(globalOutputChannel, config, keybindings, aWrapperHotkey, runners) {
+    // Validate required parameters
+    if (!globalOutputChannel) {
+      throw new Error(
+        'OutputChannelManager: globalOutputChannel is required and cannot be null/undefined',
+      );
+    }
+
+    // Validate that globalOutputChannel has the expected methods
+    const requiredMethods = ['append', 'appendLine', 'show', 'hide', 'clear', 'dispose'];
+    for (const method of requiredMethods) {
+      if (typeof globalOutputChannel[method] !== 'function') {
+        throw new Error(`OutputChannelManager: globalOutputChannel must have method '${method}'`);
+      }
+    }
+
+    // Validate config parameter
+    if (!config || typeof config !== 'object') {
+      throw new Error('OutputChannelManager: config parameter is required and must be an object');
+    }
+
+    this.globalOutputChannel = globalOutputChannel;
     this.config = config;
-    this.keybindings = keybindings;
+    this.keybindings = keybindings || {};
     this.aWrapperHotkey = aWrapperHotkey;
-    this.runners = runners;
+    this.runners = runners || {};
 
     // Strategy pattern implementations
     this.strategies = {
@@ -133,13 +167,32 @@ class OutputChannelManager {
 
   /**
    * Factory method to create a global output channel.
+   * Uses a module-level cache to ensure channels with the same name are
+   * created only once and the same OutputChannel instance is returned
+   * on subsequent requests. This prevents duplicate "AutoIt (global)"
+   * channels when multiple modules call createOutputChannel.
+   *
    * @static
    * @param {string} name - Name for the output channel
    * @param {string} languageId - Language ID for syntax highlighting
    * @returns {Object} VS Code output channel
    */
   static createGlobalOutputChannel(name, languageId) {
-    return window.createOutputChannel(name, languageId);
+    // Return cached channel if present
+    if (_cachedOutputChannels[name]) {
+      return _cachedOutputChannels[name];
+    }
+
+    // Create and cache the channel
+    const channel = window.createOutputChannel(name, languageId);
+
+    // Debug log only when the canonical global channel is created to help runtime verification
+    if (name === 'AutoIt (global)') {
+      console.debug('[AutoIt][OutputChannelManager] created global channel:', name);
+    }
+
+    _cachedOutputChannels[name] = channel;
+    return channel;
   }
 
   /**
@@ -172,7 +225,7 @@ class OutputChannelManager {
     const prefixId = `#${id}:${spacer}`;
     const prefixEmpty = ''.padStart(prefixId.length, spacer);
 
-    const aiOutCommon = window.createOutputChannel('AutoIt (global)', 'vscode-autoit-output');
+    const aiOutCommon = this.globalOutputChannel;
 
     const outputText = (aiOut, prop, lines) => {
       const time = this.getTime();
@@ -196,13 +249,13 @@ class OutputChannelManager {
         config: this.config,
       };
       const formattedProcessLines = this.strategies.process.format(linesProcess, processContext);
-      isNewLineProcess = processContext.isNewLineProcess;
+      ({ isNewLineProcess } = processContext);
 
       const textProcess = formattedProcessLines.join('\r\n');
       if (textProcess) {
         aiOutProcess[prop](textProcess);
         isNewLineProcess =
-          prop === 'appendLine' || textProcess.substring(textProcess.length - 2) === '\r\n';
+          prop === 'appendLine' || textProcess.substring(textProcess.length - CRLF_LENGTH) === CRLF;
       }
 
       if (this.runners.lastId !== id && !this.runners.isNewLine) {
@@ -228,57 +281,79 @@ class OutputChannelManager {
       if (textGlobal) {
         aiOut[prop](textGlobal);
         this.runners.isNewLine =
-          prop === 'appendLine' || textGlobal.substring(textGlobal.length - 2) === '\r\n';
+          prop === 'appendLine' || textGlobal.substring(textGlobal.length - CRLF_LENGTH) === CRLF;
       }
     };
 
     const get = (aiOut, prop, proxy) => {
-      const isFlush = prop === 'flush';
-      const isError = prop === 'error';
+      try {
+        const isFlush = prop === 'flush';
+        const isError = prop === 'error';
 
-      if (isFlush) prop = 'append';
-      else if (isError) prop = 'appendLine';
+        if (isFlush) prop = 'append';
+        else if (isError) prop = 'appendLine';
 
-      let ret = aiOut[prop];
-      if (!(ret instanceof Function)) return ret;
+        // Validate that the property exists on the target object
+        if (!(prop in aiOut)) {
+          console.error(
+            `[OutputChannelManager] Method '${prop}' not found on output channel. Available methods:`,
+            Object.getOwnPropertyNames(aiOut).filter(name => typeof aiOut[name] === 'function'),
+          );
+          throw new Error(
+            `OutputChannelManager: Method '${prop}' is not available on the output channel. ` +
+              `This usually indicates incorrect initialization - the first parameter should be an output channel, not a config object.`,
+          );
+        }
 
-      ret = text => {
-        if (text === undefined) return;
+        let ret = aiOut[prop];
+        if (!(ret instanceof Function)) return ret;
 
-        clearTimeout(prevLineTimer);
-        const lines = prop === 'append' ? text.split(/\r?\n/) : [text];
-        lines[0] = prevLine + lines[0];
+        ret = text => {
+          if (text === undefined) return;
 
-        // Filter hotkey failure messages
-        for (let i = 0; i < lines.length; i++) {
-          if (hotkeyFailedMsgFound) continue;
-          for (let r = 0; r < this.hotkeyFailedMsg.length; r++) {
-            const line = lines[i].replace(this.hotkeyFailedMsg[r], '');
-            if (line === lines[i]) continue;
-            if (hotkeyFailedMsgFound) {
-              lines.splice(i, 1);
-            } else {
-              this.aWrapperHotkey.reset(id);
-              lines[i] = this.generateHotkeyReplacementMessage();
-              hotkeyFailedMsgFound = true;
+          clearTimeout(prevLineTimer);
+          const lines = prop === 'append' ? text.split(/\r?\n/) : [text];
+          lines[0] = prevLine + lines[0];
+
+          // Filter hotkey failure messages
+          for (let i = 0; i < lines.length; i++) {
+            if (hotkeyFailedMsgFound) continue;
+            for (let r = 0; r < this.hotkeyFailedMsg.length; r++) {
+              const line = lines[i].replace(this.hotkeyFailedMsg[r], '');
+              if (line === lines[i]) continue;
+              if (hotkeyFailedMsgFound) {
+                lines.splice(i, 1);
+              } else {
+                this.aWrapperHotkey.reset(id);
+                lines[i] = this.generateHotkeyReplacementMessage();
+                hotkeyFailedMsgFound = true;
+              }
+              if (++i >= lines.length) break;
             }
-            if (++i >= lines.length) break;
           }
-        }
 
-        prevLine = !isFlush && prop === 'append' ? lines[lines.length - 1] : '';
-        if (prevLine) {
-          if (lines.length > 1) lines[lines.length - 1] = '';
-          else lines.pop();
+          prevLine = !isFlush && prop === 'append' ? lines[lines.length - 1] : '';
+          if (prevLine) {
+            if (lines.length > 1) lines[lines.length - 1] = '';
+            else lines.pop();
 
-          prevLineTimer = setTimeout(() => proxy.flush(), HOTKEY_LINE_DELAY_MS);
-        }
-        if (lines.length) outputText(aiOut, prop, lines);
-      };
+            prevLineTimer = setTimeout(() => proxy.flush(), HOTKEY_LINE_DELAY_MS);
+          }
+          if (lines.length) outputText(aiOut, prop, lines);
+        };
 
-      if (isFlush) ret('');
+        if (isFlush) ret('');
 
-      return ret;
+        return ret;
+      } catch (error) {
+        console.error('[OutputChannelManager] Proxy handler error:', error);
+        // Provide a fallback function that prevents crashes
+        return () => {
+          console.warn(
+            `[OutputChannelManager] Fallback called for method '${prop}' due to proxy error`,
+          );
+        };
+      }
     };
 
     return new Proxy(aiOutCommon, { get });
@@ -333,9 +408,10 @@ class OutputChannelManager {
    * Trims the output text in the visible AutoIt output to the max number of lines
    * set in the configuration.
    * @param {Object} runners - Runners object containing output state
+   * @param {Object} globalOutputChannel - Global output channel singleton
    * @returns {void}
    */
-  static trimOutputLines(runners) {
+  static trimOutputLines(runners, globalOutputChannel) {
     const out = runners.isAiOutVisible();
     if (!out || !runners.config.outputMaxHistoryLines) return;
 
@@ -343,8 +419,7 @@ class OutputChannelManager {
       const text = out.output.document.getText();
       const lines = text.split(/\r?\n/);
       const outputText = lines.slice(-runners.config.outputMaxHistoryLines).join('\r\n');
-      const aiOutCommon = window.createOutputChannel('AutoIt (global)', 'vscode-autoit-output');
-      aiOutCommon.replace(outputText);
+      globalOutputChannel.replace(outputText);
     }
   }
 

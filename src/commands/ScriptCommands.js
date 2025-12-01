@@ -4,9 +4,18 @@ import ProcessManager from '../services/ProcessManager';
 import OutputChannelManager from '../services/OutputChannelManager';
 import HotkeyManager from '../services/HotkeyManager';
 import conf from '../ai_config';
-import { showInformationMessage, showErrorMessage } from '../ai_showMessage';
+import { showErrorMessage, showInformationMessage, showWarningMessage } from '../ai_showMessage';
+import { validateFilePath } from '../utils/pathValidation.js';
+import { validateParameterString } from '../utils/parameterValidation.js';
+
+const packageJson = require('../../package.json');
 
 const { config } = conf;
+
+// Constants
+const STATUS_BAR_MESSAGE_TIMEOUT = 1500; // milliseconds
+const SCRIPT_STOP_INFO_TIMEOUT = 10000; // milliseconds
+const PATH_PARTS_TO_SHOW = 2; // number of path parts to show in error messages
 
 /**
  * Get the file name of the active document in the editor.
@@ -28,21 +37,30 @@ function getActiveDocumentFileName() {
 }
 
 // Instantiate services
-const processManager = new ProcessManager(
-  config,
-  window.createOutputChannel('AutoIt (global)', 'vscode-autoit-output'),
-  getActiveDocumentFileName,
-  `extension-output-${require('../../package.json').publisher}.${require('../../package.json').name}-#`,
+// Create singleton global channel using cached factory method
+const globalOutputChannel = OutputChannelManager.createGlobalOutputChannel(
+  'AutoIt (global)',
+  'vscode-autoit-output',
 );
 
-const outputChannelManager = new OutputChannelManager(
+export { globalOutputChannel };
+
+const processManager = new ProcessManager(
   config,
-  {}, // keybindings - will be handled separately if needed
-  null, // aWrapperHotkey - will be handled by HotkeyManager
-  processManager,
+  globalOutputChannel, // Use the singleton instead of creating a new one
+  getActiveDocumentFileName,
+  `extension-output-${packageJson.publisher}.${packageJson.name}-#`,
 );
 
 const hotkeyManager = new HotkeyManager(config);
+
+const outputChannelManager = new OutputChannelManager(
+  globalOutputChannel, // 1st param: globalOutputChannel (was incorrectly config)
+  config, // 2nd param: config (was incorrectly {})
+  {}, // 3rd param: keybindings
+  hotkeyManager, // 4th param: aWrapperHotkey
+  processManager, // 5th param: runners (was missing)
+);
 
 const processRunner = new ProcessRunner(
   config,
@@ -50,6 +68,7 @@ const processRunner = new ProcessRunner(
   outputChannelManager,
   hotkeyManager,
   getActiveDocumentFileName,
+  globalOutputChannel, // Use the singleton instead of creating a new one
 );
 
 /**
@@ -57,18 +76,32 @@ const processRunner = new ProcessRunner(
  * @returns {Promise<void>|undefined} Promise if async operation, undefined otherwise
  */
 async function runScript() {
+  if (!window.activeTextEditor) {
+    showErrorMessage('No active editor found');
+    return;
+  }
+
   const thisDoc = window.activeTextEditor.document;
   const thisFile = getActiveDocumentFileName();
+
+  // Check if file is untitled before attempting to save
+  if (thisDoc.isUntitled) {
+    showErrorMessage(`"${thisFile}" file must be saved first!`);
+    return;
+  }
+
+  // Validate file path to prevent path traversal attacks
+  const fileValidation = validateFilePath(thisFile);
+  if (!fileValidation.valid) {
+    showErrorMessage(`Security error: ${fileValidation.error}`);
+    return;
+  }
 
   // Simplified check - assume keybindings are set if not explicitly handled
   // In a real implementation, you might want to pass keybindings as a parameter or import them
 
   // Save the file
   const saveResult = await thisDoc.save();
-  if (thisDoc.isUntitled) {
-    window.showErrorMessage(`"${thisFile}" file must be saved first!`);
-    return;
-  }
 
   if (!saveResult) {
     showInformationMessage(`File failed to save, running saved file instead ("${thisFile}")`, {
@@ -77,16 +110,20 @@ async function runScript() {
   }
 
   const params = config.consoleParams;
-  window.setStatusBarMessage('Running the script...', 1500);
+  window.setStatusBarMessage('Running the script...', STATUS_BAR_MESSAGE_TIMEOUT);
 
   let args;
   if (params) {
-    const quoteSplit = /[\w-/]+|"[^"]+"/g;
-    const paramArray = params.match(quoteSplit); // split the string by space or quotes
+    // Check parameters for potentially dangerous patterns and warn
+    const paramValidation = validateParameterString(params);
 
-    const cleanParams = paramArray.map(value => {
-      return value.replace(/"/g, '');
-    });
+    if (paramValidation.hasWarnings) {
+      const warningMessages = paramValidation.warnings.join('\n');
+      showWarningMessage(
+        `Warning: Console parameters contain potentially dangerous characters:\n${warningMessages}\n\nParameters are passed safely via spawn(), but this may indicate unintended input.`,
+        { timeout: 15000 },
+      );
+    }
 
     args = [
       config.wrapperPath,
@@ -96,7 +133,7 @@ async function runScript() {
       '/in',
       thisFile,
       '/UserParams',
-      ...cleanParams,
+      ...paramValidation.sanitized,
     ];
   } else {
     args = [config.wrapperPath, '/run', '/prod', '/ErrorStdOut', '/in', thisFile];
@@ -122,12 +159,18 @@ async function runScript() {
 function killScript(thisFile = null) {
   const data = processManager.findRunner({ status: true, thisFile });
   if (!data) {
-    const file = thisFile ? ` (${thisFile.split('\\').splice(-2, 2).join('\\')}) ` : ' ';
-    showInformationMessage(`No script${file}currently is running.`, { timeout: 10000 });
+    let file = ' ';
+    if (thisFile) {
+      const parts = thisFile.split('\\');
+      file = ` (${parts.slice(-PATH_PARTS_TO_SHOW).join('\\')}) `;
+    }
+    showInformationMessage(`No script${file}currently is running.`, {
+      timeout: SCRIPT_STOP_INFO_TIMEOUT,
+    });
     return;
   }
 
-  window.setStatusBarMessage('Stopping the script...', 1500);
+  window.setStatusBarMessage('Stopping the script...', STATUS_BAR_MESSAGE_TIMEOUT);
   data.runner.stdin.pause();
   data.runner.kill();
 }
@@ -136,21 +179,26 @@ function killScript(thisFile = null) {
  * Restarts the running AutoIt script
  * @returns {Promise<void>|undefined} Promise if async operation, undefined otherwise
  */
-async function restartScript() {
+function restartScript() {
   const { runner, info } = processManager.lastRunningOpened || {};
-  if (runner) {
+
+  // If there's a currently running script, kill it and restart when it exits
+  if (runner && info?.status) {
     runner.on('exit', () => {
       if (info.callback) {
         clearTimeout(info.timer);
         info.callback();
       }
-      runScript();
+      // Fire and forget - errors will be handled by runScript internally
+      runScript().catch(error => {
+        console.error('Error restarting script after exit:', error);
+      });
     });
-    if (info.status) {
-      killScript(info.thisFile);
-      return;
-    }
+    killScript(info.thisFile);
+    return;
   }
+
+  // No running script, just start one
   return runScript();
 }
 

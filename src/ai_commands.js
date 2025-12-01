@@ -75,6 +75,9 @@ class CommandsFacade {
         'vscode-autoit-output',
       );
 
+      // Store global output channel as singleton
+      this.services.globalOutputChannel = outputChannel;
+
       // Initialize process manager
       this.services.processManager = new ProcessManager(
         this.config,
@@ -88,6 +91,7 @@ class CommandsFacade {
 
       // Initialize output channel manager
       this.services.outputChannelManager = new OutputChannelManager(
+        this.services.globalOutputChannel,
         this.config,
         this.keybindings,
         this.services.hotkeyManager,
@@ -101,6 +105,7 @@ class CommandsFacade {
         this.services.outputChannelManager,
         this.services.hotkeyManager,
         UtilityCommands.getActiveDocumentFileName,
+        this.services.globalOutputChannel,
       );
 
       // Set up event listeners
@@ -131,7 +136,10 @@ class CommandsFacade {
 
       // Listen for visible text editor changes to trim output
       window.onDidChangeVisibleTextEditors(() => {
-        OutputChannelManager.trimOutputLines(this.services.processManager);
+        OutputChannelManager.trimOutputLines(
+          this.services.processManager,
+          this.services.globalOutputChannel,
+        );
       });
     } catch (error) {
       console.error('Error setting up event listeners:', error);
@@ -186,24 +194,24 @@ class CommandsFacade {
 const commandsFacade = new CommandsFacade();
 
 // Export command functions with facade integration
-export const runScript = ScriptCommands.runScript;
-export const killScript = ScriptCommands.killScript;
-export const restartScript = ScriptCommands.restartScript;
+export const { runScript } = ScriptCommands;
+export const { killScript } = ScriptCommands;
+export const { restartScript } = ScriptCommands;
 
-export const compile = ToolCommands.compile;
-export const tidy = ToolCommands.tidy;
-export const check = ToolCommands.check;
-export const build = ToolCommands.build;
-export const launchHelp = ToolCommands.launchHelp;
-export const launchInfo = ToolCommands.launchInfo;
-export const launchKoda = ToolCommands.launchKoda;
+export const { compile } = ToolCommands;
+export const { tidy } = ToolCommands;
+export const { check } = ToolCommands;
+export const { build } = ToolCommands;
+export const { launchHelp } = ToolCommands;
+export const { launchInfo } = ToolCommands;
+export const { launchKoda } = ToolCommands;
 
-export const debugMsgBox = DebugCommands.debugMsgBox;
-export const debugConsole = DebugCommands.debugConsole;
+export const { debugMsgBox } = DebugCommands;
+export const { debugConsole } = DebugCommands;
 
-export const changeParams = UtilityCommands.changeParams;
-export const openInclude = UtilityCommands.openInclude;
-export const insertHeader = UtilityCommands.insertHeader;
+export const { changeParams } = UtilityCommands;
+export const { openInclude } = UtilityCommands;
+export const { insertHeader } = UtilityCommands;
 
 // Re-export debug functions
 export { debugRemove, functionTraceAdd, traceRemove };

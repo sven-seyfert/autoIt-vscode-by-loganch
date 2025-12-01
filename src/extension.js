@@ -1,4 +1,4 @@
-import { window, languages, workspace } from 'vscode';
+import { languages, window, workspace } from 'vscode';
 import { dirname } from 'path';
 import { existsSync } from 'fs';
 import { execFile } from 'child_process';
@@ -12,10 +12,15 @@ import goToDefinitionFeature from './ai_definition';
 
 import { registerCommands } from './registerCommands';
 import { formatterProvider } from './ai_formatter';
-import { parseAu3CheckOutput, clearDiagnosticsOwnedBy } from './diagnosticUtils';
+import { clearDiagnosticsOwnedBy, parseAu3CheckOutput } from './diagnosticUtils';
 import conf from './ai_config';
+import MapTrackingService from './services/MapTrackingService.js';
 
 const { config } = conf;
+
+// Debounce timers for file changes (Map<string, NodeJS.Timeout>)
+const updateTimers = new Map();
+const DEBOUNCE_DELAY = 300; // ms
 
 /**
  * Runs the check process for the given document and returns the console output.
@@ -25,43 +30,48 @@ const { config } = conf;
 const runCheckProcess = document => {
   return new Promise((resolve, reject) => {
     let consoleOutput = '';
-    const params = [
-      /* https://www.autoitscript.com/autoit3/docs/intro/au3check.htm */
-      '-w',
-      '1', // already included file (on)
-      '-w',
-      '2', // missing #comments-end (on)
-      '-w',
-      '3', // already declared var (off)
-      '-w',
-      '4', // local var used in global scope (off)
-      '-w',
-      '5', // local var declared but not used (off)
-      '-w',
-      '6', // warn when using Dim (off)
-      '-w',
-      '7', // warn when passing Const or expression on ByRef param(s) (on)
-    ];
+    // Start with empty params - let Au3Check use its own defaults
+    // Only add parameters from include paths and #AutoIt3Wrapper_AU3Check_Parameters directive
+    // See https://www.autoitscript.com/autoit3/docs/intro/au3check.htm
+    const params = [];
 
     // Add -I for each include path
     config.includePaths.forEach(path => {
       params.push('-I', path);
     });
 
-    // find last occurrence of #AutoIt3Wrapper_AU3Check_Parameters=
+    // Parse #AutoIt3Wrapper_AU3Check_Parameters directive if present
     const match = [
-      ...document.getText().matchAll(/^\s*#AutoIt3Wrapper_AU3Check_Parameters=.*$/gm),
+      ...document.getText().matchAll(/^\s*#AutoIt3Wrapper_AU3Check_Parameters=(.*)$/gm),
     ].pop();
-    const regexp = /(-w-?)\s+([0-9]+)/g;
-    while (match) {
-      const [, param, value] = regexp.exec(match[0]) || [];
-      if (!param) break;
-      const numValue = Number(value);
-      const i = (numValue - 1) * 2;
-      // only update existing params
-      if (params[i] === undefined) continue;
-      params[i] = param;
-      params[i + 1] = String(numValue);
+    if (match) {
+      // Extract the parameter string after the = sign
+      const paramString = match[1].trim();
+
+      // Parse standalone flags first: -q (quiet) and -d (must declare vars)
+      // These flags are safe because they don't alter the output format:
+      // - -q: suppresses info messages, keeps error/warning format
+      // - -d: enables additional checks, produces standard format errors
+      if (/(?:^|\s)-q\b/.test(paramString)) {
+        params.push('-q');
+      }
+      if (/(?:^|\s)-d\b/.test(paramString)) {
+        params.push('-d');
+      }
+      // Parse -w (warning) parameters: -w or -w- followed by a number
+      // Append all warning parameters from the directive
+      const warnRegex = /(-w-?)\s+([0-9]+)/g;
+      let regexMatch;
+      while ((regexMatch = warnRegex.exec(paramString)) !== null) {
+        const [, param, value] = regexMatch;
+        params.push(param, value);
+      }
+
+      // NOTE: -v (verbosity) parameters are intentionally NOT supported here
+      // Verbosity flags (-v 1, -v 2, -v 3) add extra output lines that would break
+      // the diagnostic parser which expects a specific format:
+      //   "file.au3"(line,col) : severity: message
+      // See diagnosticUtils.js OUTPUT_REGEXP for the expected format
     }
     const checkProcess = execFile(config.checkPath, [...params, document.fileName], {
       cwd: dirname(document.fileName),
@@ -167,6 +177,117 @@ export const activate = ctx => {
 
   registerCommands(ctx);
 
+  // Initialize MapTrackingService
+  const workspaceRoot = workspace.workspaceFolders?.[0]?.uri.fsPath || '';
+  const autoitConfig = workspace.getConfiguration('autoit');
+  const autoitIncludePaths = autoitConfig.get('includePaths', []);
+  const maxIncludeDepth = autoitConfig.get('maps.includeDepth', 3);
+
+  const mapTrackingService = MapTrackingService.getInstance(
+    workspaceRoot,
+    autoitIncludePaths,
+    maxIncludeDepth,
+  );
+
+  // Track document changes with debouncing
+  const onDocumentChange = document => {
+    if (document.languageId !== 'autoit') return;
+
+    const filePath = document.uri.fsPath;
+
+    // Clear existing timer for this specific document
+    if (updateTimers.has(filePath)) {
+      clearTimeout(updateTimers.get(filePath));
+    }
+
+    // Set new timer for this document
+    const timer = setTimeout(() => {
+      mapTrackingService.updateFile(filePath, document.getText());
+      updateTimers.delete(filePath); // Clean up after execution
+    }, DEBOUNCE_DELAY);
+
+    updateTimers.set(filePath, timer);
+  };
+
+  // Handle document open
+  ctx.subscriptions.push(
+    workspace.onDidOpenTextDocument(document => {
+      if (document.languageId === 'autoit') {
+        mapTrackingService.updateFile(document.uri.fsPath, document.getText());
+      }
+    }),
+  );
+
+  // Handle document change (debounced)
+  ctx.subscriptions.push(
+    workspace.onDidChangeTextDocument(event => {
+      onDocumentChange(event.document);
+    }),
+  );
+
+  // Handle document save (immediate update)
+  ctx.subscriptions.push(
+    workspace.onDidSaveTextDocument(document => {
+      if (document.languageId === 'autoit') {
+        const filePath = document.uri.fsPath;
+
+        // Cancel debounce for this specific document
+        if (updateTimers.has(filePath)) {
+          clearTimeout(updateTimers.get(filePath));
+          updateTimers.delete(filePath);
+        }
+
+        mapTrackingService.updateFile(filePath, document.getText());
+      }
+    }),
+  );
+
+  // Handle document close
+  ctx.subscriptions.push(
+    workspace.onDidCloseTextDocument(document => {
+      if (document.languageId === 'autoit') {
+        const filePath = document.uri.fsPath;
+
+        // Cancel and clean up timer for this specific document
+        if (updateTimers.has(filePath)) {
+          clearTimeout(updateTimers.get(filePath));
+          updateTimers.delete(filePath);
+        }
+
+        // Note: We keep the file in cache for includes
+        // mapTrackingService.removeFile(filePath);
+      }
+    }),
+  );
+
+  // Parse all open AutoIt documents
+  workspace.textDocuments.forEach(document => {
+    if (document.languageId === 'autoit') {
+      mapTrackingService.updateFile(document.uri.fsPath, document.getText());
+    }
+  });
+
+  // Handle configuration changes
+  ctx.subscriptions.push(
+    workspace.onDidChangeConfiguration(event => {
+      if (
+        event.affectsConfiguration('autoit.includePaths') ||
+        event.affectsConfiguration('autoit.maps.includeDepth')
+      ) {
+        const updatedWorkspaceRoot = workspace.workspaceFolders?.[0]?.uri.fsPath || '';
+        const updatedConfig = workspace.getConfiguration('autoit');
+        const updatedIncludePaths = updatedConfig.get('includePaths', []);
+        const updatedMaxDepth = updatedConfig.get('maps.includeDepth', 3);
+
+        mapTrackingService.updateConfiguration(
+          updatedWorkspaceRoot,
+          updatedIncludePaths,
+          updatedMaxDepth,
+        );
+      }
+    }),
+  );
+
   if (process.platform === 'win32') {
     const diagnosticCollection = languages.createDiagnosticCollection('autoit');
     ctx.subscriptions.push(diagnosticCollection);
@@ -184,7 +305,6 @@ export const activate = ctx => {
           const dbg = cfg?.get?.('debugLogging') === true;
           const msg = `[AutoIt][extension] clearDiagnosticsOwnedBy failed during document close for ${document?.uri?.toString?.() ?? document?.fileName ?? 'unknown'}: ${err?.message ?? err}`;
           if (dbg) {
-            // eslint-disable-next-line no-console
             console.debug(msg);
           }
         } catch {
@@ -201,7 +321,6 @@ export const activate = ctx => {
           const dbg = cfg?.get?.('debugLogging') === true;
           const msg = `[AutoIt][extension] diagnosticCollection.delete failed during document close for ${document?.uri?.toString?.() ?? document?.fileName ?? 'unknown'}: ${err?.message ?? err}`;
           if (dbg) {
-            // eslint-disable-next-line no-console
             console.debug(msg);
           }
         } catch {
@@ -221,10 +340,11 @@ export const activate = ctx => {
     }
   }
 
-  // eslint-disable-next-line no-console
   console.log('AutoIt is now active!');
 };
 
-// this method is called when your extension is deactivated
-// eslint-disable-next-line prettier/prettier
-export function deactivate() { }
+export function deactivate() {
+  // Clear all pending debounce timers
+  updateTimers.forEach(timer => clearTimeout(timer));
+  updateTimers.clear();
+}
