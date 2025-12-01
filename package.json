@@ -328,6 +328,7 @@
       },
       {
         "command": "extension.functionTraceAdd",
+        "key": "",
         "when": "editorTextFocus && editorLangId == autoit"
       }
     ],
@@ -792,7 +793,8 @@
     "webpack-dev": "webpack --mode development --watch",
     "vscode:prepublish": "webpack --mode production",
     "package:openvsx": "node scripts/package-openvsx.js",
-    "package:all": "node scripts/package-all.js"
+    "package:all": "node scripts/package-all.js",
+    "build": "npm run vscode:prepublish && bash ./copy-extensionsjs-to-vscode-extension-dist-folder.sh"
   },
   "jest": {
     "testEnvironment": "node",
