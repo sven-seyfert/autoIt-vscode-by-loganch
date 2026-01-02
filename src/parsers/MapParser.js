@@ -34,7 +34,7 @@ export default class MapParser {
   /**
    * Parse key assignments for a specific Map variable
    * @param {string} mapName - The Map variable name (e.g., '$mUser')
-   * @returns {Array<{key: string, line: number, notation: string, nested: Array<string>, isDynamic: boolean}>}
+   * @returns {Array<{key: string, line: number, notation: string, isDynamic: boolean}>}
    */
   parseKeyAssignments(mapName) {
     const assignments = [];
@@ -49,19 +49,6 @@ export default class MapParser {
     this.lines.forEach((line, index) => {
       if (line.trim().startsWith(';')) return;
 
-      // Check for nested structure first
-      const nestedKeys = this.parseNestedKeyStructure(line, mapName);
-      if (nestedKeys.length > 0) {
-        assignments.push({
-          key: nestedKeys[0], // First key in chain
-          line: index,
-          notation: 'bracket',
-          nested: nestedKeys,
-          isDynamic: false,
-        });
-        return;
-      }
-
       // Check for dynamic keys
       const dynamicKeys = this.parseDynamicKeysFromLine(line, mapName);
       if (dynamicKeys.length > 0) {
@@ -70,7 +57,6 @@ export default class MapParser {
             key: dynKey,
             line: index,
             notation: 'bracket',
-            nested: [],
             isDynamic: true,
           });
         });
@@ -84,7 +70,6 @@ export default class MapParser {
           key: dotMatch[1],
           line: index,
           notation: 'dot',
-          nested: [],
           isDynamic: false,
         });
         return;
@@ -97,40 +82,12 @@ export default class MapParser {
           key: bracketMatch[1],
           line: index,
           notation: 'bracket',
-          nested: [],
           isDynamic: false,
         });
       }
     });
 
     return assignments;
-  }
-
-  /**
-   * Parse nested key structure from assignment
-   * @param {string} line - The line containing the assignment
-   * @param {string} mapName - The Map variable name
-   * @returns {Array<string>} Array of keys in the nesting chain
-   */
-  parseNestedKeyStructure(line, mapName) {
-    // Extract key chain: $map["a"]["b"]["c"] -> ["a", "b", "c"]
-    const escapedName = mapName.replace(/\$/g, '\\$');
-    const pattern = new RegExp(`^\\s*${escapedName}((?:\\[["']([^"']+)["']\\])+)\\s*=`, 'i');
-    const match = line.match(pattern);
-
-    if (!match) return [];
-
-    const keyChain = match[1];
-    const keyPattern = /\[["']([^"']+)["']\]/g;
-    const keys = [];
-    let keyMatch;
-
-    while ((keyMatch = keyPattern.exec(keyChain)) !== null) {
-      keys.push(keyMatch[1]);
-    }
-
-    // Only return if we have multiple keys (nested structure)
-    return keys.length > 1 ? keys : [];
   }
 
   /**
@@ -152,51 +109,6 @@ export default class MapParser {
     }
 
     return dynamicKeys;
-  }
-
-  /**
-   * Build hierarchical structure for nested Maps
-   * @param {string} mapName - The Map variable name
-   * @returns {object} Tree structure of nested keys
-   */
-  buildNestedMapStructure(mapName) {
-    const assignments = this.parseKeyAssignments(mapName);
-    const root = { children: {} };
-
-    assignments.forEach(assignment => {
-      if (assignment.nested && assignment.nested.length > 0) {
-        // Nested structure
-        let current = root.children;
-        assignment.nested.forEach((key, index) => {
-          if (!current[key]) {
-            current[key] = {
-              key,
-              line: assignment.line,
-              notation: assignment.notation,
-              children: {},
-              isLeaf: index === assignment.nested.length - 1,
-              isDynamic: false,
-            };
-          }
-          current = current[key].children;
-        });
-      } else {
-        // Flat key
-        const { key } = assignment;
-        if (!root.children[key]) {
-          root.children[key] = {
-            key,
-            line: assignment.line,
-            notation: assignment.notation,
-            children: {},
-            isLeaf: true,
-            isDynamic: assignment.isDynamic || false,
-          };
-        }
-      }
-    });
-
-    return root;
   }
 
   /**

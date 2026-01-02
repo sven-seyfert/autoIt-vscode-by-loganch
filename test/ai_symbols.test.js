@@ -62,6 +62,27 @@ class MockTextDocument {
     return new MockTextLine(text, line);
   }
 
+  offsetAt(position) {
+    let offset = 0;
+    for (let i = 0; i < position.line && i < this._lines.length; i++) {
+      offset += this._lines[i].length + 1; // +1 for newline
+    }
+    offset += position.character;
+    return offset;
+  }
+
+  positionAt(offset) {
+    let remaining = offset;
+    let line = 0;
+
+    while (line < this._lines.length && remaining > this._lines[line].length) {
+      remaining -= this._lines[line].length + 1; // +1 for newline
+      line++;
+    }
+
+    return new MockPosition(line, remaining);
+  }
+
   get lineCount() {
     return this._lines.length;
   }
@@ -266,70 +287,6 @@ $mUser["email"] = "alice@example.com"`;
       const keyNames = mapSymbol.children.map(c => c.name);
       expect(keyNames).toContain('"username"');
       expect(keyNames).toContain('"email"');
-    });
-  });
-
-  describe('Nested Map keys', () => {
-    it('should create hierarchical structure for nested Maps', async () => {
-      const source = `Local $mConfig[]
-$mConfig["host"]["ip"] = "192.168.1.1"
-$mConfig["host"]["port"] = 8080`;
-
-      const doc = new MockTextDocument(source, path.join(process.cwd(), 'test.au3'));
-      const symbols = await provideDocumentSymbols(doc);
-
-      const mapSymbol = symbols.find(s => s.name === '$mConfig');
-      expect(mapSymbol).toBeDefined();
-      expect(mapSymbol.children).toHaveLength(1);
-
-      const hostKey = mapSymbol.children[0];
-      expect(hostKey.name).toBe('"host"');
-      expect(hostKey.children).toHaveLength(2);
-
-      const childKeyNames = hostKey.children.map(c => c.name);
-      expect(childKeyNames).toContain('"ip"');
-      expect(childKeyNames).toContain('"port"');
-    });
-
-    it('should handle 3-level nesting', async () => {
-      const source = `Local $mData[]
-$mData["a"]["b"]["c"] = "value"`;
-
-      const doc = new MockTextDocument(source, path.join(process.cwd(), 'test.au3'));
-      const symbols = await provideDocumentSymbols(doc);
-
-      const mapSymbol = symbols.find(s => s.name === '$mData');
-      expect(mapSymbol).toBeDefined();
-
-      const aKey = mapSymbol.children[0];
-      expect(aKey.name).toBe('"a"');
-      expect(aKey.children).toHaveLength(1);
-
-      const bKey = aKey.children[0];
-      expect(bKey.name).toBe('"b"');
-      expect(bKey.children).toHaveLength(1);
-
-      const cKey = bKey.children[0];
-      expect(cKey.name).toBe('"c"');
-    });
-
-    it('should handle mixed flat and nested keys', async () => {
-      const source = `Local $mData[]
-$mData.flat = "value"
-$mData["nested"]["key"] = "value"
-$mData.anotherFlat = 123`;
-
-      const doc = new MockTextDocument(source, path.join(process.cwd(), 'test.au3'));
-      const symbols = await provideDocumentSymbols(doc);
-
-      const mapSymbol = symbols.find(s => s.name === '$mData');
-      expect(mapSymbol).toBeDefined();
-      expect(mapSymbol.children).toHaveLength(3);
-
-      const nestedKey = mapSymbol.children.find(c => c.name === '"nested"');
-      expect(nestedKey).toBeDefined();
-      expect(nestedKey.children).toHaveLength(1);
-      expect(nestedKey.children[0].name).toBe('"key"');
     });
   });
 

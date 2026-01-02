@@ -55,11 +55,13 @@ $mUser.age = 30`;
         key: 'name',
         line: 1,
         notation: 'dot',
+        isDynamic: false,
       });
       expect(assignments).toContainEqual({
         key: 'age',
         line: 2,
         notation: 'dot',
+        isDynamic: false,
       });
     });
 
@@ -75,11 +77,13 @@ $mUser['phone'] = "555-1234"`;
         key: 'email',
         line: 1,
         notation: 'bracket',
+        isDynamic: false,
       });
       expect(assignments).toContainEqual({
         key: 'phone',
         line: 2,
         notation: 'bracket',
+        isDynamic: false,
       });
     });
 

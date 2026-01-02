@@ -335,20 +335,20 @@ function parseVariablesFromText(params) {
 }
 
 /**
- * Create DocumentSymbol array for Map keys (supports nesting)
+ * Create DocumentSymbol array for Map keys (flat, single-level)
  * @param {import('vscode').TextDocument} doc - The document
- * @param {object} keysObj - Keys object from Map structure
- * @param {string} containerName - Parent Map or key name
+ * @param {Array} keysArray - Array of key objects {key, line, isDynamic}
+ * @param {string} containerName - Parent Map variable name
  * @returns {Array<import('vscode').DocumentSymbol>}
  */
-function createKeySymbols(doc, keysObj, containerName) {
+function createKeySymbols(doc, keysArray, containerName) {
   const keySymbols = [];
 
   // Sort keys by line number (order of first appearance)
-  const sortedKeys = Object.values(keysObj).sort((a, b) => a.line - b.line);
+  const sortedKeys = keysArray.sort((a, b) => a.line - b.line);
 
   sortedKeys.forEach(keyInfo => {
-    const { key, line, isDynamic, children } = keyInfo;
+    const { key, line, isDynamic } = keyInfo;
 
     // Format key display
     const displayKey = isDynamic ? `[${key}]` : `"${key}"`;
@@ -390,7 +390,7 @@ function createKeySymbols(doc, keysObj, containerName) {
 
     const keyRange = new Range(line, keyStart, line, keyEnd);
 
-    // Create key DocumentSymbol
+    // Create key DocumentSymbol (flat, no children)
     const keySymbol = new DocumentSymbol(
       displayKey,
       containerName,
@@ -398,11 +398,6 @@ function createKeySymbols(doc, keysObj, containerName) {
       keyRange,
       keyRange,
     );
-
-    // Recursively add nested keys as children
-    if (children && Object.keys(children).length > 0) {
-      keySymbol.children = createKeySymbols(doc, children, `${containerName}["${key}"]`);
-    }
 
     keySymbols.push(keySymbol);
   });
@@ -414,10 +409,11 @@ function createKeySymbols(doc, keysObj, containerName) {
  * Create DocumentSymbol for Map variable with key children
  * @param {import('vscode').TextDocument} doc - The document
  * @param {object} mapDeclaration - Map declaration info from MapParser
- * @param {object} mapStructure - Nested Map structure from MapTrackingService
+ * @param {object} keysData - Flat keys from MapTrackingService
+ * @param {object} parser - MapParser instance to get assignment details
  * @returns {import('vscode').DocumentSymbol}
  */
-function createMapSymbols(doc, mapDeclaration, mapStructure) {
+function createMapSymbols(doc, mapDeclaration, keysData, parser) {
   const { name, line } = mapDeclaration;
 
   // Create parent Map symbol
@@ -425,8 +421,32 @@ function createMapSymbols(doc, mapDeclaration, mapStructure) {
   const mapRange = mapLine.range;
   const mapSymbol = new DocumentSymbol(name, 'Map', SymbolKind.Variable, mapRange, mapRange);
 
+  // Get all assignments to find line numbers
+  const assignments = parser.parseKeyAssignments(name);
+  const keyLineMap = new Map();
+  assignments.forEach(assign => {
+    keyLineMap.set(assign.key, { line: assign.line, isDynamic: assign.isDynamic });
+  });
+
+  // Combine direct keys and function keys into flat array with line numbers
+  const allKeys = [];
+
+  keysData.directKeys.forEach(key => {
+    const info = keyLineMap.get(key);
+    if (info) {
+      allKeys.push({ key, line: info.line, isDynamic: info.isDynamic });
+    }
+  });
+
+  keysData.functionKeys.forEach(fkey => {
+    const info = keyLineMap.get(fkey.key);
+    if (info) {
+      allKeys.push({ key: fkey.key, line: info.line, isDynamic: info.isDynamic });
+    }
+  });
+
   // Add key children
-  mapSymbol.children = createKeySymbols(doc, mapStructure.children, name);
+  mapSymbol.children = createKeySymbols(doc, allKeys, name);
 
   return mapSymbol;
 }
@@ -499,9 +519,9 @@ async function addMapSymbols(doc, result) {
 
     // Create symbols for each Map
     for (const mapDecl of mapDeclarations) {
-      const mapStructure = await mapService.getMapStructureWithIncludes(filePath, mapDecl.name);
+      const keysData = await mapService.getKeysForMapWithIncludes(filePath, mapDecl.name, Infinity);
 
-      const mapSymbol = createMapSymbols(doc, mapDecl, mapStructure);
+      const mapSymbol = createMapSymbols(doc, mapDecl, keysData, parser);
       result.push(mapSymbol);
     }
   } catch (error) {
