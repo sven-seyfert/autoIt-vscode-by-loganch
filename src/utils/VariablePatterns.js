@@ -11,16 +11,20 @@ export default class VariablePatterns {
 
     // Explicit variable declarations
     // Global declarations at script level (Volatile keyword supported)
-    this.global = /^\s*(?:Global|Volatile)\s+(\$\w+)/gim;
+    // Captures comma-separated variable lists: Global $a, $b, $c
+    this.global = /^\s*(?:Global|Volatile)\s+((?:\$\w+(?:\s*,\s*\$\w+)*))/gim;
 
     // Local declarations inside functions (Volatile keyword supported)
-    this.local = /^\s*(?:Local|Volatile)\s+(\$\w+)/gim;
+    // Captures comma-separated variable lists: Local $x, $y, $z
+    this.local = /^\s*(?:Local|Volatile)\s+((?:\$\w+(?:\s*,\s*\$\w+)*))/gim;
 
     // Static declarations (function-scoped, persists between calls) (Volatile keyword supported)
-    this.static = /^\s*(?:Static|Volatile)\s+(\$\w+)/gim;
+    // Captures comma-separated variable lists: Static $s1, $s2
+    this.static = /^\s*(?:Static|Volatile)\s+((?:\$\w+(?:\s*,\s*\$\w+)*))/gim;
 
     // Dim declarations (context-dependent: global at script level, local in functions)
-    this.dim = /^\s*Dim\s+(\$\w+)/gim;
+    // Captures comma-separated variable lists: Dim $data, $info
+    this.dim = /^\s*Dim\s+((?:\$\w+(?:\s*,\s*\$\w+)*))/gim;
 
     // Parameter extraction from function signature
     this.parameter = /\$\w+/g;
@@ -30,8 +34,32 @@ export default class VariablePatterns {
 
     // Utility patterns
     this.comment = /^\s*;/;
-    this.string = /["'].*?["']/g;
+    // AutoIt string pattern: handles double-character escaping ("" or '')
+    // Matches: "He said ""hello""" and 'Don''t'
+    this.string = /"(?:[^"]|"")*"|'(?:[^']|'')*'/g;
     this.includePattern = /#include\s+[<"]([^>"]+)[>"]/gim;
+  }
+
+  /**
+   * Extract individual variable names from a comma-separated list
+   * @param {string} variablesStr - The matched variable list (e.g., "$a, $b, $c")
+   * @returns {string[]} Array of variable names (e.g., ["$a", "$b", "$c"])
+   * @example
+   * // For "Global $a, $b, $c = 1"
+   * const match = line.match(patterns.global);
+   * if (match) {
+   *   const variables = patterns.extractVariables(match[1]);
+   *   // variables = ["$a", "$b", "$c"]
+   * }
+   */
+  extractVariables(variablesStr) {
+    if (!variablesStr) {
+      return [];
+    }
+    return variablesStr
+      .split(',')
+      .map(v => v.trim())
+      .filter(v => v && v.startsWith('$'));
   }
 
   /**
@@ -45,8 +73,12 @@ export default class VariablePatterns {
 
   /**
    * Remove strings from a line to prevent false pattern matches
+   * Handles AutoIt's double-character escaping ("" and '')
    * @param {string} line - The line to clean
    * @returns {string} Line with string contents removed
+   * @example
+   * removeStrings('Local $msg = "He said ""hello"""') // => 'Local $msg = ""'
+   * removeStrings("Local $text = 'Don''t'") // => "Local $text = \"\""
    */
   removeStrings(line) {
     return line.replace(this.string, '""');
