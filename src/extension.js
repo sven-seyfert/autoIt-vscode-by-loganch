@@ -86,7 +86,14 @@ const runCheckProcess = document => {
       consoleOutput += data.toString();
     });
 
-    checkProcess.stderr.on('error', error => {
+    checkProcess.stderr.on('data', data => {
+      if (!data || data.length === 0) {
+        return;
+      }
+      console.error(`[AutoIt][extension] Au3Check stderr: ${data.toString()}`);
+    });
+
+    checkProcess.on('error', error => {
       reject(error);
     });
 
@@ -97,7 +104,8 @@ const runCheckProcess = document => {
 };
 
 const handleCheckProcessError = error => {
-  window.showErrorMessage(`${config.checkPath} ${error}`);
+  const message = error?.message ?? String(error);
+  window.showErrorMessage(`${config.checkPath} ${message}`);
 };
 
 const validateCheckPath = checkPath => {
