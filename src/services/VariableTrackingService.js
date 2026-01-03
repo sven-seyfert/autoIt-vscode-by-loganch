@@ -59,6 +59,7 @@ class VariableTrackingService {
     this.pendingParses = new Map(); // filePath -> { source, timestamp }
     this.parseDebounceMs = DEFAULT_PARSE_DEBOUNCE_MS;
     this.ongoingParses = new Set(); // Track files currently being parsed
+    this.latestQueuedSource = new Map(); // filePath -> source (for queuing during concurrent parse)
 
     // Create debounced parse function per file
     this.debouncedParseByFile = new Map(); // filePath -> debounced function
@@ -113,10 +114,19 @@ class VariableTrackingService {
   updateConfiguration(workspaceRoot, autoitIncludePaths, maxIncludeDepth) {
     this.workspaceRoot = workspaceRoot;
     this.includeResolver = new IncludeResolver(workspaceRoot, autoitIncludePaths, maxIncludeDepth);
-    // Clear cached parsers to force re-parsing with new include paths
+    // Cancel all pending debounced parses
+    for (const debouncedParse of this.debouncedParseByFile.values()) {
+      if (debouncedParse.cancel) {
+        debouncedParse.cancel();
+      }
+    }
+    // Clear all cached state to force re-parsing with new include paths
     this.fileParsers.clear();
+    this.debouncedParseByFile.clear();
+    this.pendingParses.clear();
+    this.ongoingParses.clear();
+    this.latestQueuedSource.clear();
   }
-
   /**
    * Reset singleton instance (for testing)
    * @internal
@@ -188,8 +198,9 @@ class VariableTrackingService {
    * @private
    */
   _parseFile(filePath, source) {
-    // Prevent duplicate parsing
+    // If a parse is already ongoing, save this source and return
     if (this.ongoingParses.has(filePath)) {
+      this.latestQueuedSource.set(filePath, source);
       return;
     }
 
@@ -203,6 +214,17 @@ class VariableTrackingService {
     } finally {
       this.ongoingParses.delete(filePath);
       this.pendingParses.delete(filePath);
+
+      // Check if a newer source was queued while we were parsing
+      if (this.latestQueuedSource.has(filePath)) {
+        const queuedSource = this.latestQueuedSource.get(filePath);
+        this.latestQueuedSource.delete(filePath);
+
+        // Schedule async re-parse to avoid stack overflow with rapid edits
+        setImmediate(() => {
+          this._parseFile(filePath, queuedSource);
+        });
+      }
     }
   }
 
@@ -211,20 +233,41 @@ class VariableTrackingService {
    * @param {string} filePath - Absolute file path
    */
   removeFile(filePath) {
+    // Retrieve the debounced entry from this.debouncedParseByFile for the given filePath
+    const debounced = this.debouncedParseByFile.get(filePath);
+
+    // If the entry exists and has a cancel method (indicating it's a debounced function), call debounced.cancel()
+    if (debounced && typeof debounced.cancel === 'function') {
+      debounced.cancel();
+    }
+    // Otherwise, if the entry is a numeric timeout ID, call clearTimeout(debounced)
+    else if (typeof debounced === 'number') {
+      clearTimeout(debounced);
+    }
+
+    // Only after canceling the pending operation should you proceed to delete the entries
     this.fileParsers.delete(filePath);
     this.debouncedParseByFile.delete(filePath);
     this.pendingParses.delete(filePath);
+    this.latestQueuedSource.delete(filePath);
   }
 
   /**
    * Clear all cached data
    */
   clear() {
+    // Cancel all pending debounced parses
+    for (const debouncedParse of this.debouncedParseByFile.values()) {
+      if (debouncedParse.cancel) {
+        debouncedParse.cancel();
+      }
+    }
     this.fileParsers.clear();
     this.debouncedParseByFile.clear();
     this.pendingParses.clear();
+    this.ongoingParses.clear();
+    this.latestQueuedSource.clear();
   }
-
   /**
    * Get variables at a specific position in a file
    * @param {string} filePath - Absolute file path
