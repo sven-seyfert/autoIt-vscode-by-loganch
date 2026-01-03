@@ -16,6 +16,7 @@ import {
   regionPattern,
   variablePattern,
 } from './util';
+import { DEFAULT_MAX_INCLUDE_DEPTH } from './constants';
 import MapTrackingService from './services/MapTrackingService.js';
 const config = workspace.getConfiguration('autoit');
 const commentEndRegex = /^\s*#(?:ce|comments-end)/;
@@ -501,7 +502,7 @@ async function addMapSymbols(doc, result) {
     const workspaceRoot =
       workspaceFolders && workspaceFolders.length > 0 ? workspaceFolders[0].uri.fsPath : '';
     const includePaths = autoitConfig.get('includePaths', []);
-    const includeDepth = autoitConfig.get('maps.includeDepth', 3);
+    const includeDepth = autoitConfig.get('maps.includeDepth', DEFAULT_MAX_INCLUDE_DEPTH);
 
     // Get MapTrackingService instance
     const mapService = MapTrackingService.getInstance(workspaceRoot, includePaths, includeDepth);

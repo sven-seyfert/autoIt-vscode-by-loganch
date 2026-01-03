@@ -1,13 +1,18 @@
-import MapParser from '../parsers/MapParser.js';
+/**
+ * Singleton service for tracking variable declarations across the workspace
+ * Based on MapTrackingService.js structure
+ */
+
+import VariableParser from '../parsers/VariableParser.js';
 import IncludeResolver from '../utils/IncludeResolver.js';
 import fs from 'fs';
 import { DEFAULT_MAX_INCLUDE_DEPTH, DEFAULT_PARSE_DEBOUNCE_MS } from '../constants.js';
 
 /**
- * Debounce helper
+ * Debounce helper function
  * @param {Function} func - Function to debounce
  * @param {number} wait - Debounce delay in ms
- * @returns {Function} Debounced function
+ * @returns {Function} Debounced function with cancel method
  */
 function debounce(func, wait) {
   let timeout;
@@ -29,11 +34,11 @@ function debounce(func, wait) {
 }
 
 /**
- * Singleton service for tracking Map variables across workspace
+ * Singleton service for tracking variable declarations across workspace
  */
-class MapTrackingService {
+class VariableTrackingService {
   /**
-   * @type {MapTrackingService | null}
+   * @type {VariableTrackingService | null}
    */
   static instance = null;
 
@@ -42,11 +47,11 @@ class MapTrackingService {
     autoitIncludePaths = [],
     maxIncludeDepth = DEFAULT_MAX_INCLUDE_DEPTH,
   ) {
-    if (MapTrackingService.instance) {
-      return MapTrackingService.instance;
+    if (VariableTrackingService.instance) {
+      return VariableTrackingService.instance;
     }
 
-    this.fileParsers = new Map(); // filePath -> MapParser
+    this.fileParsers = new Map(); // filePath -> VariableParser
     this.includeResolver = new IncludeResolver(workspaceRoot, autoitIncludePaths, maxIncludeDepth);
     this.workspaceRoot = workspaceRoot;
 
@@ -58,21 +63,19 @@ class MapTrackingService {
     // Create debounced parse function per file
     this.debouncedParseByFile = new Map(); // filePath -> debounced function
 
-    MapTrackingService.instance = this;
+    VariableTrackingService.instance = this;
   }
 
   /**
    * Get singleton instance
-   * @param {string} [workspaceRoot] - Only used on first call, ignored on subsequent calls unless updateConfiguration() is called
-   * @param {string[]} [autoitIncludePaths] - Only used on first call, ignored on subsequent calls unless updateConfiguration() is called
-   * @param {number} [maxIncludeDepth] - Only used on first call, ignored on subsequent calls unless updateConfiguration() is called
-   * @returns {MapTrackingService}
-   * @note Parameters are only used during initial instantiation. To update configuration
-   *       after initialization, use updateConfiguration() method.
+   * @param {string} [workspaceRoot] - Only used on first call
+   * @param {string[]} [autoitIncludePaths] - Only used on first call
+   * @param {number} [maxIncludeDepth] - Only used on first call
+   * @returns {VariableTrackingService}
    */
   static getInstance(workspaceRoot, autoitIncludePaths, maxIncludeDepth) {
-    if (!MapTrackingService.instance) {
-      MapTrackingService.instance = new MapTrackingService(
+    if (!VariableTrackingService.instance) {
+      VariableTrackingService.instance = new VariableTrackingService(
         workspaceRoot,
         autoitIncludePaths,
         maxIncludeDepth,
@@ -83,7 +86,7 @@ class MapTrackingService {
       maxIncludeDepth !== undefined
     ) {
       // Warn if parameters provided don't match stored config
-      const { instance } = MapTrackingService;
+      const { instance } = VariableTrackingService;
       const hasChanges =
         (workspaceRoot !== undefined && workspaceRoot !== instance.workspaceRoot) ||
         (autoitIncludePaths !== undefined &&
@@ -93,12 +96,12 @@ class MapTrackingService {
 
       if (hasChanges) {
         console.warn(
-          '[MapTrackingService] getInstance called with different parameters than initial instance. ' +
+          '[VariableTrackingService] getInstance called with different parameters than initial instance. ' +
             'Use updateConfiguration() to modify singleton settings.',
         );
       }
     }
-    return MapTrackingService.instance;
+    return VariableTrackingService.instance;
   }
 
   /**
@@ -119,7 +122,7 @@ class MapTrackingService {
    * @internal
    */
   static resetInstance() {
-    MapTrackingService.instance = null;
+    VariableTrackingService.instance = null;
   }
 
   /**
@@ -128,7 +131,9 @@ class MapTrackingService {
    * @param {string} source - File source code
    */
   updateFile(filePath, source) {
-    const parser = new MapParser(source);
+    const parser = new VariableParser(source, filePath);
+    parser.parseFunctionBoundaries();
+    parser.parseVariableDeclarations();
     this.fileParsers.set(filePath, parser);
   }
 
@@ -157,7 +162,7 @@ class MapTrackingService {
   }
 
   /**
-   * Update file immediately without debouncing (for file open)
+   * Update file immediately without debouncing (for file save)
    * @param {string} filePath - Absolute file path
    * @param {string} source - File source code
    */
@@ -169,6 +174,9 @@ class MapTrackingService {
         debouncedParse.cancel();
       }
     }
+
+    // Clean up pending parse entry
+    this.pendingParses.delete(filePath);
 
     this._parseFile(filePath, source);
   }
@@ -188,7 +196,9 @@ class MapTrackingService {
     this.ongoingParses.add(filePath);
 
     try {
-      const parser = new MapParser(source);
+      const parser = new VariableParser(source, filePath);
+      parser.parseFunctionBoundaries();
+      parser.parseVariableDeclarations();
       this.fileParsers.set(filePath, parser);
     } finally {
       this.ongoingParses.delete(filePath);
@@ -202,6 +212,8 @@ class MapTrackingService {
    */
   removeFile(filePath) {
     this.fileParsers.delete(filePath);
+    this.debouncedParseByFile.delete(filePath);
+    this.pendingParses.delete(filePath);
   }
 
   /**
@@ -209,70 +221,91 @@ class MapTrackingService {
    */
   clear() {
     this.fileParsers.clear();
+    this.debouncedParseByFile.clear();
+    this.pendingParses.clear();
   }
 
   /**
-   * Get keys for a Map variable at a specific line in a file
+   * Get variables at a specific position in a file
    * @param {string} filePath - Absolute file path
-   * @param {string} mapName - Map variable name
-   * @param {number} line - Line number
-   * @returns {object} Object with directKeys and functionKeys arrays
+   * @param {number} line - Line number (0-based)
+   * @returns {Array} Array of variable objects
    */
-  getKeysForMap(filePath, mapName, line) {
+  getVariablesAtPosition(filePath, line) {
     const parser = this.fileParsers.get(filePath);
     if (!parser) {
-      return { directKeys: [], functionKeys: [] };
+      return [];
     }
 
-    return parser.getKeysForMapAtLine(mapName, line);
+    return parser.getVariablesAtLine(line);
   }
 
   /**
-   * Get keys for a Map including keys from #include files
+   * Get variables at a position including variables from #include files
+   * Note: Only global variables from included files are accessible
    * @param {string} filePath - Absolute file path
-   * @param {string} mapName - Map variable name
-   * @param {number} line - Line number
-   * @returns {Promise<object>} Promise resolving to object with directKeys and functionKeys arrays
+   * @param {number} line - Line number (0-based)
+   * @returns {Promise<Array>} Promise resolving to array of variable objects
    */
-  async getKeysForMapWithIncludes(filePath, mapName, line) {
-    // Get keys from current file
-    const currentKeys = this.getKeysForMap(filePath, mapName, line);
+  async getVariablesWithIncludes(filePath, line) {
+    // Get variables from current file
+    const currentVariables = this.getVariablesAtPosition(filePath, line);
 
-    // Get keys from included files
+    // Get variables from included files (only global variables)
     const includedFiles = this.includeResolver.resolveAllIncludes(filePath);
-    const allDirectKeys = new Set(currentKeys.directKeys);
-    const allFunctionKeys = [...currentKeys.functionKeys];
+    const allVariables = [...currentVariables];
 
     for (const includedFile of includedFiles) {
       // Parse included file if not already cached
       if (!this.fileParsers.has(includedFile)) {
         try {
-          // Check if file exists using async access
-          await fs.promises.access(includedFile, fs.constants.F_OK);
-          const source = await fs.promises.readFile(includedFile, 'utf8');
+          const source = await this._readFile(includedFile);
           this.updateFile(includedFile, source);
         } catch (error) {
-          // Log read errors instead of silently continuing
           console.warn(
-            `[MapTrackingService] Failed to read included file ${includedFile}:`,
+            `[VariableTrackingService] Failed to read included file ${includedFile}:`,
             error.message,
           );
           continue;
         }
       }
 
-      const includedKeys = this.getKeysForMap(includedFile, mapName, Infinity);
+      const includedVariables = this.getVariablesAtPosition(includedFile, Infinity);
 
-      // Merge keys
-      includedKeys.directKeys.forEach(key => allDirectKeys.add(key));
-      allFunctionKeys.push(...includedKeys.functionKeys);
+      // Only include global variables from included files
+      const globalVariables = includedVariables.filter(v => v.scope === 'global');
+      allVariables.push(...globalVariables);
     }
 
-    return {
-      directKeys: Array.from(allDirectKeys),
-      functionKeys: allFunctionKeys,
-    };
+    // Remove duplicates (keep first occurrence)
+    const seen = new Set();
+    return allVariables.filter(variable => {
+      const key = `${variable.name}_${variable.functionName || 'global'}`;
+      if (seen.has(key)) {
+        return false;
+      }
+      seen.add(key);
+      return true;
+    });
+  }
+
+  /**
+   * Read file asynchronously
+   * @param {string} filePath - Absolute file path
+   * @returns {Promise<string>} Promise resolving to file contents
+   * @private
+   */
+  _readFile(filePath) {
+    return new Promise((resolve, reject) => {
+      fs.readFile(filePath, 'utf8', (err, data) => {
+        if (err) {
+          reject(err);
+        } else {
+          resolve(data);
+        }
+      });
+    });
   }
 }
 
-export default MapTrackingService;
+export default VariableTrackingService;

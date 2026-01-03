@@ -2,7 +2,7 @@ import { languages, window, workspace } from 'vscode';
 import { basename, dirname, sep } from 'path';
 import { existsSync } from 'fs';
 import { execFile } from 'child_process';
-import { FORMATTER } from './constants';
+import { FORMATTER, DEFAULT_MAX_INCLUDE_DEPTH } from './constants';
 import languageConfiguration from './languageConfiguration';
 import hoverFeature from './ai_hover';
 import completionFeature from './ai_completion';
@@ -16,6 +16,7 @@ import { formatterProvider } from './ai_formatter';
 import { clearDiagnosticsOwnedBy, parseAu3CheckOutput } from './diagnosticUtils';
 import conf from './ai_config';
 import MapTrackingService from './services/MapTrackingService.js';
+import VariableTrackingService from './services/VariableTrackingService.js';
 
 const { config } = conf;
 
@@ -210,9 +211,16 @@ export const activate = ctx => {
   const workspaceRoot = workspace.workspaceFolders?.[0]?.uri.fsPath || '';
   const autoitConfig = workspace.getConfiguration('autoit');
   const autoitIncludePaths = autoitConfig.get('includePaths', []);
-  const maxIncludeDepth = autoitConfig.get('maps.includeDepth', 3);
+  const maxIncludeDepth = autoitConfig.get('maps.includeDepth', DEFAULT_MAX_INCLUDE_DEPTH);
 
   const mapTrackingService = MapTrackingService.getInstance(
+    workspaceRoot,
+    autoitIncludePaths,
+    maxIncludeDepth,
+  );
+
+  // Initialize VariableTrackingService
+  const variableTrackingService = VariableTrackingService.getInstance(
     workspaceRoot,
     autoitIncludePaths,
     maxIncludeDepth,
@@ -232,6 +240,7 @@ export const activate = ctx => {
     // Set new timer for this document
     const timer = setTimeout(() => {
       mapTrackingService.updateFile(filePath, document.getText());
+      variableTrackingService.updateFileDebounced(filePath, document.getText());
       updateTimers.delete(filePath); // Clean up after execution
     }, DEBOUNCE_DELAY);
 
@@ -243,6 +252,7 @@ export const activate = ctx => {
     workspace.onDidOpenTextDocument(document => {
       if (document.languageId === 'autoit') {
         mapTrackingService.updateFile(document.uri.fsPath, document.getText());
+        variableTrackingService.updateFileImmediate(document.uri.fsPath, document.getText());
       }
     }),
   );
@@ -267,6 +277,7 @@ export const activate = ctx => {
         }
 
         mapTrackingService.updateFile(filePath, document.getText());
+        variableTrackingService.updateFileImmediate(filePath, document.getText());
       }
     }),
   );
@@ -283,8 +294,9 @@ export const activate = ctx => {
           updateTimers.delete(filePath);
         }
 
-        // Note: We keep the file in cache for includes
+        // Note: We keep the files in cache for includes
         // mapTrackingService.removeFile(filePath);
+        // variableTrackingService.removeFile(filePath);
       }
     }),
   );
@@ -293,6 +305,7 @@ export const activate = ctx => {
   workspace.textDocuments.forEach(document => {
     if (document.languageId === 'autoit') {
       mapTrackingService.updateFile(document.uri.fsPath, document.getText());
+      variableTrackingService.updateFileImmediate(document.uri.fsPath, document.getText());
     }
   });
 
@@ -306,9 +319,14 @@ export const activate = ctx => {
         const updatedWorkspaceRoot = workspace.workspaceFolders?.[0]?.uri.fsPath || '';
         const updatedConfig = workspace.getConfiguration('autoit');
         const updatedIncludePaths = updatedConfig.get('includePaths', []);
-        const updatedMaxDepth = updatedConfig.get('maps.includeDepth', 3);
+        const updatedMaxDepth = updatedConfig.get('maps.includeDepth', DEFAULT_MAX_INCLUDE_DEPTH);
 
         mapTrackingService.updateConfiguration(
+          updatedWorkspaceRoot,
+          updatedIncludePaths,
+          updatedMaxDepth,
+        );
+        variableTrackingService.updateConfiguration(
           updatedWorkspaceRoot,
           updatedIncludePaths,
           updatedMaxDepth,
