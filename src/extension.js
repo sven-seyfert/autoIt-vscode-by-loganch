@@ -252,7 +252,13 @@ export const activate = ctx => {
     workspace.onDidOpenTextDocument(document => {
       if (document.languageId === 'autoit') {
         mapTrackingService.updateFile(document.uri.fsPath, document.getText());
-        variableTrackingService.updateFileImmediate(document.uri.fsPath, document.getText());
+        try {
+          variableTrackingService.updateFileImmediate(document.uri.fsPath, document.getText());
+        } catch (error) {
+          console.error(
+            `[AutoIt][extension] Failed to update variable tracking for file: ${document.uri.fsPath}. Error: ${error.message}`,
+          );
+        }
       }
     }),
   );
@@ -277,7 +283,13 @@ export const activate = ctx => {
         }
 
         mapTrackingService.updateFile(filePath, document.getText());
-        variableTrackingService.updateFileImmediate(filePath, document.getText());
+        try {
+          variableTrackingService.updateFileImmediate(filePath, document.getText());
+        } catch (error) {
+          console.error(
+            `[AutoIt][extension] Failed to update variable tracking for file: ${filePath}. Error: ${error.message}`,
+          );
+        }
       }
     }),
   );
@@ -305,7 +317,13 @@ export const activate = ctx => {
   workspace.textDocuments.forEach(document => {
     if (document.languageId === 'autoit') {
       mapTrackingService.updateFile(document.uri.fsPath, document.getText());
-      variableTrackingService.updateFileImmediate(document.uri.fsPath, document.getText());
+      try {
+        variableTrackingService.updateFileImmediate(document.uri.fsPath, document.getText());
+      } catch (error) {
+        console.error(
+          `[AutoIt][extension] Failed to update variable tracking for file: ${document.uri.fsPath}. Error: ${error.message}`,
+        );
+      }
     }
   });
 
@@ -321,16 +339,31 @@ export const activate = ctx => {
         const updatedIncludePaths = updatedConfig.get('includePaths', []);
         const updatedMaxDepth = updatedConfig.get('maps.includeDepth', DEFAULT_MAX_INCLUDE_DEPTH);
 
-        mapTrackingService.updateConfiguration(
-          updatedWorkspaceRoot,
-          updatedIncludePaths,
-          updatedMaxDepth,
-        );
-        variableTrackingService.updateConfiguration(
-          updatedWorkspaceRoot,
-          updatedIncludePaths,
-          updatedMaxDepth,
-        );
+        try {
+          mapTrackingService.updateConfiguration(
+            updatedWorkspaceRoot,
+            updatedIncludePaths,
+            updatedMaxDepth,
+          );
+        } catch (error) {
+          console.error(
+            `[AutoIt][extension] Failed to update MapTrackingService configuration for workspace: ${updatedWorkspaceRoot}. Config changed: includePaths or maps.includeDepth. Error: ${error.message}`,
+          );
+          // Continue execution - the service will keep using previous configuration
+        }
+
+        try {
+          variableTrackingService.updateConfiguration(
+            updatedWorkspaceRoot,
+            updatedIncludePaths,
+            updatedMaxDepth,
+          );
+        } catch (error) {
+          console.error(
+            `[AutoIt][extension] Failed to update VariableTrackingService configuration for workspace: ${updatedWorkspaceRoot}. Config changed: includePaths or maps.includeDepth. Error: ${error.message}`,
+          );
+          // Continue execution - the service will keep using previous configuration
+        }
       }
     }),
   );
