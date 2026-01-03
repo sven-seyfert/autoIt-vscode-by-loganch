@@ -356,14 +356,24 @@ const provideCompletionItems = async (document, position) => {
 
   if (prefix === '$') {
     // Try scope-aware approach first
-    try {
-      const filePath = document.uri.fsPath;
-      const variables = await variableTracker.getVariablesWithIncludes(filePath, position.line);
-      variableCompletions = createVariableCompletions(variables);
-    } catch (error) {
-      console.warn('[ai_completion] Scope-aware variables failed, using regex fallback:', error.message);
-      // Fallback to regex-based approach
+    if (!variableTracker) {
+      console.warn(
+        '[ai_completion] VariableTrackingService instance is null; using regex fallback',
+      );
       variableCompletions = getVariableCompletions(text, prefix);
+    } else {
+      try {
+        const filePath = document.uri.fsPath;
+        const variables = await variableTracker.getVariablesWithIncludes(filePath, position.line);
+        variableCompletions = createVariableCompletions(variables);
+      } catch (error) {
+        console.warn(
+          '[ai_completion] Scope-aware variables failed, using regex fallback:',
+          error.message,
+        );
+        // Fallback to regex-based approach
+        variableCompletions = getVariableCompletions(text, prefix);
+      }
     }
   } else {
     // For non-$ prefixes, use existing regex approach
@@ -388,8 +398,8 @@ const provideCompletionItems = async (document, position) => {
 
   return [
     ...completions,
-    ...variableCompletions,  // Either scope-aware OR regex-based, never both
-    ...localCompletions,     // Only functions now
+    ...variableCompletions, // Either scope-aware OR regex-based, never both
+    ...localCompletions, // Only functions now
     ...includeCompletions,
     ...libraryCompletions,
   ];
