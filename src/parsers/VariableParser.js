@@ -46,7 +46,6 @@ class VariableParser {
           endLine: -1,
           parameters,
         };
-        return;
       }
 
       const funcEnd = line.match(funcEndPattern);
@@ -121,9 +120,15 @@ class VariableParser {
         .map(v => v.trim())
         .filter(v => v);
 
+      // Find keyword position to search from there
+      const keywordMatch = cleanedLine.match(new RegExp(`^\\s*${keyword}`, 'i'));
+      let searchFrom = keywordMatch ? keywordMatch[0].length : 0;
+
       variables.forEach(varName => {
-        // Find the column position of this variable in the cleaned line
-        const column = cleanedLine.indexOf(varName);
+        // Find the column position of this variable starting after the keyword
+        const column = cleanedLine.indexOf(varName, searchFrom);
+        // Update search position for next variable
+        searchFrom = column + varName.length;
 
         this.variables.push({
           name: varName,
@@ -160,9 +165,15 @@ class VariableParser {
         .map(v => v.trim())
         .filter(v => v);
 
+      // Find Dim keyword position to search from there
+      const keywordMatch = cleanedLine.match(/^[ \t]*Dim/i);
+      let searchFrom = keywordMatch ? keywordMatch[0].length : 0;
+
       variables.forEach(varName => {
-        // Find the column position of this variable in the cleaned line
-        const column = cleanedLine.indexOf(varName);
+        // Find the column position of this variable starting after the keyword
+        const column = cleanedLine.indexOf(varName, searchFrom);
+        // Update search position for next variable
+        searchFrom = column + varName.length;
 
         this.variables.push({
           name: varName,
@@ -203,14 +214,23 @@ class VariableParser {
       })
       .filter(p => p.length > 0);
 
+    // Find opening parenthesis to search from there
+    const parenIndex = line.indexOf('(');
+    let searchFrom = parenIndex >= 0 ? parenIndex : 0;
+
     // Add each parameter as a variable
     parameters.forEach(param => {
+      // Find the column position starting after the opening parenthesis
+      const column = line.indexOf(param, searchFrom);
+      // Update search position for next parameter
+      searchFrom = column + param.length;
+
       this.variables.push({
         name: param,
         type: 'parameter',
         scope: 'function',
         functionName,
-        position: { line: lineIndex, column: line.indexOf(param) },
+        position: { line: lineIndex, column },
         declarationKeyword: null, // Parameters don't have declaration keywords
       });
     });
