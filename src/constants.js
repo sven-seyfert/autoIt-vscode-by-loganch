@@ -152,7 +152,21 @@ const FORMATTER = {
   FILE_EXTENSION: '.au3',
 };
 
+/**
+ * Maximum depth for recursively resolving #include directives.
+ * Used by MapTrackingService and VariableTrackingService to prevent infinite recursion
+ * when parsing cross-file includes. A value of 3 allows up to 4 file levels
+ * (main file → include → sub-include → sub-sub-include), balancing comprehensive
+ * symbol tracking with performance and memory usage.
+ */
 const DEFAULT_MAX_INCLUDE_DEPTH = 3;
+
+/**
+ * Debounce interval in milliseconds for deferring parse operations during document changes.
+ * Used by MapTrackingService and VariableTrackingService to avoid excessive CPU usage
+ * from parsing on every keystroke. A value of 500ms provides responsive completion updates
+ * after the user pauses typing while minimizing performance impact during active editing.
+ */
 const DEFAULT_PARSE_DEBOUNCE_MS = 500;
 
 export { DEFAULT_UDFS, FORMATTER, DEFAULT_MAX_INCLUDE_DEPTH, DEFAULT_PARSE_DEBOUNCE_MS };
