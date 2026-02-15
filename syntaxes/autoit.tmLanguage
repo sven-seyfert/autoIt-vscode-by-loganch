@@ -99,34 +99,21 @@
           </dict>
         </dict>
         <key>match</key>
-        <string>#\b(?i:forcedef|forceref|ignorefunc|pragma|AutoIt3Wrapper_\w+|Au3Stripper_\w+|Tidy_(?:Parameters|On|Off|ILC_Pos))\b(.*)$</string>
+        <string>#\b(?i:include-once|notrayicon|onautoitstartregister|requireadmin|endregion|forcedef|forceref|ignorefunc|pragma|region)\b(.*)$</string>
         <key>name</key>
-        <string>meta.preprocessor.autoit</string>
+        <string>keyword.control.directives.autoit</string>
       </dict>
       <dict>
+        <key>name</key>
+        <string>keyword.control.directives.autoit</string>
         <key>match</key>
-        <string>^\s*(#(?i:endregion|region))\b([^\;]*$)?|(#(?i:include-once|notrayicon|requireadmin|onautoitstartregister(.*)$))\b</string>
+        <string>^\s*(#)(AutoIt3Wrapper_\w+|Au3Stripper_\w+|Tidy_(Parameters|On|Off|ILC_Pos))\b</string>
         <key>captures</key>
         <dict>
           <key>1</key>
           <dict>
             <key>name</key>
             <string>meta.preprocessor.autoit</string>
-          </dict>
-          <key>2</key>
-          <dict>
-            <key>name</key>
-            <string>string.parameter.directives.autoit</string>
-          </dict>
-          <key>3</key>
-          <dict>
-            <key>name</key>
-            <string>keyword.control.directives.autoit</string>
-          </dict>
-          <key>4</key>
-          <dict>
-            <key>name</key>
-            <string>string.parameter.directives.autoit</string>
           </dict>
         </dict>
       </dict>
