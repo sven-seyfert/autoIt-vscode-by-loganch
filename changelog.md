@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Includes without trailing space now colorize correctly.
+
+## [1.4.0] - 2026-02-13
+
 ### Added
 
 - **Map variable IntelliSense** - Intelligent key completions when accessing AutoIt Map variables

@@ -69,7 +69,7 @@
           "name": "punctuation.definition.string.end.import.autoit"
         }
       },
-      "match": "^\\s*#(?i:include)\\s+(([\"'<])[^\\r\\n]*?([\"'>]))",
+      "match": "^\\s*#(?i:include)\\s*(([\"'<])[^\\r\\n]*?([\"'>]))",
       "name": "keyword.control.import.autoit"
     },
     {
