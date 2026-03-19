@@ -10,8 +10,12 @@ import {
   setRegExpFlags,
   variablePattern,
 } from './util';
-import DEFAULT_UDFS from './constants';
+import { DEFAULT_UDFS } from './constants';
 import MapTrackingService from './services/MapTrackingService.js';
+import VariableTrackingService from './services/VariableTrackingService.js';
+
+// Get singleton instance of VariableTrackingService at module level
+const variableTracker = VariableTrackingService.getInstance();
 
 // Per-document cache for include completions
 const includeCache = new Map(); // Map<documentUri, { files: string[], completions: CompletionItem[] }>
@@ -199,6 +203,54 @@ const getLocalFunctionCompletions = text => {
 };
 
 /**
+ * Creates completion items for scope-aware variables
+ * @param {Array} variables Array of variable objects from VariableParser
+ * @returns {Array<CompletionItem>} Array of CompletionItem objects sorted by priority
+ */
+const createVariableCompletions = variables => {
+  return variables.map(variable => {
+    const item = new CompletionItem(variable.name, CompletionItemKind.Variable);
+    const detail = getVariableDetail(variable);
+    item.detail = detail;
+    item.sortText = getSortText(variable);
+    return item;
+  });
+};
+
+/**
+ * Get human-readable detail for a variable
+ * @param {object} variable Variable object from VariableParser
+ * @returns {string} Detail string
+ */
+const getVariableDetail = variable => {
+  const types = {
+    global: 'Global Variable',
+    local: 'Local Variable',
+    static: 'Static Variable',
+    parameter: 'Parameter',
+    dim: 'Dim Variable',
+  };
+  return types[variable.type] || 'Variable';
+};
+
+/**
+ * Get sort text for priority-based ordering
+ * Parameters > Local > Static > Global > Dim
+ * @param {object} variable Variable object from VariableParser
+ * @returns {string} Sort text for ordering
+ */
+const getSortText = variable => {
+  const priority = {
+    parameter: '0', // Highest priority
+    local: '1',
+    static: '2',
+    global: '3',
+    dim: '4', // Lowest priority
+  };
+  return `${priority[variable.type] || '5'}_${variable.name}`;
+};
+
+/**
  * Get completions for Map variable keys
  * @param {import('vscode').TextDocument} document
  * @param {import('vscode').Position} position
@@ -299,10 +351,37 @@ const provideCompletionItems = async (document, position) => {
     return mapCompletions;
   }
 
-  const variableCompletions = getVariableCompletions(text, prefix);
-  const functionCompletions = getLocalFunctionCompletions(text);
+  // Get variable completions based on prefix
+  let variableCompletions = [];
 
-  const localCompletions = [...variableCompletions, ...functionCompletions];
+  if (prefix === '$') {
+    // Try scope-aware approach first
+    if (!variableTracker) {
+      console.warn(
+        '[ai_completion] VariableTrackingService instance is null; using regex fallback',
+      );
+      variableCompletions = getVariableCompletions(text, prefix);
+    } else {
+      try {
+        const filePath = document.uri.fsPath;
+        const variables = await variableTracker.getVariablesWithIncludes(filePath, position.line);
+        variableCompletions = createVariableCompletions(variables);
+      } catch (error) {
+        console.warn(
+          '[ai_completion] Scope-aware variables failed, using regex fallback:',
+          error.message,
+        );
+        // Fallback to regex-based approach
+        variableCompletions = getVariableCompletions(text, prefix);
+      }
+    }
+  } else {
+    // For non-$ prefixes, use existing regex approach
+    variableCompletions = getVariableCompletions(text, prefix);
+  }
+
+  const functionCompletions = getLocalFunctionCompletions(text);
+  const localCompletions = [...functionCompletions]; // Only functions, no variables
 
   // Collect the includes of the document
   let pattern = includePattern.exec(text);
@@ -317,7 +396,13 @@ const provideCompletionItems = async (document, position) => {
   const libraryIncludes = getLibraryIncludes(text);
   const libraryCompletions = getLibraryFunctions(libraryIncludes, document);
 
-  return [...completions, ...localCompletions, ...includeCompletions, ...libraryCompletions];
+  return [
+    ...completions,
+    ...variableCompletions, // Either scope-aware OR regex-based, never both
+    ...localCompletions, // Only functions now
+    ...includeCompletions,
+    ...libraryCompletions,
+  ];
 };
 
 const completionFeature = languages.registerCompletionItemProvider(

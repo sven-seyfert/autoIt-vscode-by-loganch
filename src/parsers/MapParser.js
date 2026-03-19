@@ -34,7 +34,7 @@ export default class MapParser {
   /**
    * Parse key assignments for a specific Map variable
    * @param {string} mapName - The Map variable name (e.g., '$mUser')
-   * @returns {Array<{key: string, line: number, notation: string}>}
+   * @returns {Array<{key: string, line: number, notation: string, isDynamic: boolean}>}
    */
   parseKeyAssignments(mapName) {
     const assignments = [];
@@ -48,6 +48,21 @@ export default class MapParser {
 
     this.lines.forEach((line, index) => {
       if (line.trim().startsWith(';')) return;
+
+      // Check for dynamic keys
+      const dynamicKeys = this.parseDynamicKeysFromLine(line, mapName);
+      if (dynamicKeys.length > 0) {
+        dynamicKeys.forEach(dynKey => {
+          assignments.push({
+            key: dynKey,
+            line: index,
+            notation: 'bracket',
+            isDynamic: true,
+          });
+        });
+        return;
+      }
+
       // Check dot notation
       const dotMatch = line.match(dotPattern);
       if (dotMatch) {
@@ -55,6 +70,7 @@ export default class MapParser {
           key: dotMatch[1],
           line: index,
           notation: 'dot',
+          isDynamic: false,
         });
         return;
       }
@@ -66,11 +82,33 @@ export default class MapParser {
           key: bracketMatch[1],
           line: index,
           notation: 'bracket',
+          isDynamic: false,
         });
       }
     });
 
     return assignments;
+  }
+
+  /**
+   * Parse dynamic key assignments from a line (using variables as keys)
+   * @param {string} line - The line containing the assignment
+   * @param {string} mapName - The Map variable name
+   * @returns {Array<string>} Array of variable names used as dynamic keys
+   */
+  parseDynamicKeysFromLine(line, mapName) {
+    const dynamicKeys = [];
+    const escapedName = mapName.replace(/\$/g, '\\$');
+
+    // Match: $map[$variable] = value
+    const pattern = new RegExp(`^\\s*${escapedName}\\[(\\$[a-zA-Z_]\\w*)\\]\\s*=`, 'i');
+    const match = line.match(pattern);
+
+    if (match) {
+      dynamicKeys.push(match[1]); // The variable name
+    }
+
+    return dynamicKeys;
   }
 
   /**

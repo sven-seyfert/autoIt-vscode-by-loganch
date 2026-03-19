@@ -135,14 +135,13 @@ The extension uses static analysis to:
 
 ## Limitations
 
-- **Single-level Maps only**: Nested Map keys (e.g., `$map.user.name`) are not yet supported
+- **Single-level Maps only**: AutoIt Maps do not support nested/chained key access. Syntax like `$map["key1"]["key2"]` or `$map.key1.key2` is invalid in AutoIt. Use single keys with descriptive names instead: `$map["user_name"]` or `$map.userName`. Note: Keys CAN contain dots as literal characters - `$map["database.host"]` is a valid SINGLE key, not nested access.
 - **Static analysis**: Only detects keys assigned via direct syntax, not dynamic keys
 - **Function tracking**: Limited to same-file functions initially
 - **Performance**: Very large workspaces may experience delays (see configuration)
 
 ## Future Enhancements
 
-- Nested Map support (`$map.level1.level2`)
 - Cross-file function parameter tracking
 - Dynamic key detection from MapAppend calls
 - Map type inference and validation

@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Includes without trailing space now colorize correctly.
+
+### Changed
+
+- Separated some preprocesors to be colored closer to Scite.
+  - Token scope (`keyword.control.directives.autoit`) now is used for `Include-Once`, `NoTrayIcon`, `RequireAdmin` and `OnAutoItStartRegister`
+  - Token scope (`meta.preprocessor.autoit`) is used for all others.
+
+## [1.4.0] - 2026-02-13
+
 ### Added
 
 - **Map variable IntelliSense** - Intelligent key completions when accessing AutoIt Map variables
@@ -18,10 +30,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - `autoit.maps.includeDepth` - Maximum depth for resolving #include files (default: 3, range: 0-10)
     - `autoit.maps.showFunctionKeys` - Show Map keys assigned in functions (default: true)
   - See [docs/map-support.md](docs/map-support.md) for performance tuning recommendations
+- **Scope-aware variable IntelliSense** - Intelligent context-aware variable completions that respect AutoIt's scoping rules
+  - Shows only accessible variables at cursor position (local, static, global, and parameters)
+  - Prioritizes local variables over globals for better relevance
+  - Respects function boundaries and AutoIt's scope rules (global and function-level scoping)
+  - Extends to global variables from #include files
+  - Intelligent debouncing (500ms) with concurrent update handling
+  - Fallback to regex-based completion when service is unavailable
+- Ignore AutoIt Tidy backup files from diagnostics
+
+### Fixed
+
+- Improved error handling for variable tracking updates during configuration changes
+- Enhanced stderr and process error handling in Au3Check execution
 
 ### Changed
 
 - Enhanced README documentation with Map intelligence feature details
+- Enhanced variable parsing with support for comma-separated declarations (e.g., `Global $a, $b, $c`) and improved string handling for AutoIt's double-character escaping
+- Extracted formatter constants into constants.js file
 
 ## [1.3.0] - 2025-11-10
 

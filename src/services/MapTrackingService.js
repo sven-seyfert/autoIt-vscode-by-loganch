@@ -1,6 +1,32 @@
 import MapParser from '../parsers/MapParser.js';
 import IncludeResolver from '../utils/IncludeResolver.js';
 import fs from 'fs';
+import { DEFAULT_MAX_INCLUDE_DEPTH, DEFAULT_PARSE_DEBOUNCE_MS } from '../constants.js';
+
+/**
+ * Debounce helper
+ * @param {Function} func - Function to debounce
+ * @param {number} wait - Debounce delay in ms
+ * @returns {Function} Debounced function
+ */
+function debounce(func, wait) {
+  let timeout;
+  const debouncedFunction = function executedFunction(...args) {
+    const later = () => {
+      clearTimeout(timeout);
+      func(...args);
+    };
+    clearTimeout(timeout);
+    timeout = setTimeout(later, wait);
+  };
+
+  // Add cancel method
+  debouncedFunction.cancel = () => {
+    clearTimeout(timeout);
+  };
+
+  return debouncedFunction;
+}
 
 /**
  * Singleton service for tracking Map variables across workspace
@@ -11,7 +37,11 @@ class MapTrackingService {
    */
   static instance = null;
 
-  constructor(workspaceRoot = '', autoitIncludePaths = [], maxIncludeDepth = 3) {
+  constructor(
+    workspaceRoot = '',
+    autoitIncludePaths = [],
+    maxIncludeDepth = DEFAULT_MAX_INCLUDE_DEPTH,
+  ) {
     if (MapTrackingService.instance) {
       return MapTrackingService.instance;
     }
@@ -19,14 +49,23 @@ class MapTrackingService {
     this.fileParsers = new Map(); // filePath -> MapParser
     this.includeResolver = new IncludeResolver(workspaceRoot, autoitIncludePaths, maxIncludeDepth);
     this.workspaceRoot = workspaceRoot;
+
+    // Debouncing state
+    this.pendingParses = new Map(); // filePath -> { source, timestamp }
+    this.parseDebounceMs = DEFAULT_PARSE_DEBOUNCE_MS;
+    this.ongoingParses = new Set(); // Track files currently being parsed
+
+    // Create debounced parse function per file
+    this.debouncedParseByFile = new Map(); // filePath -> debounced function
+
     MapTrackingService.instance = this;
   }
 
   /**
    * Get singleton instance
-   * @param {string} workspaceRoot - Only used on first call, ignored on subsequent calls unless updateConfiguration() is called
-   * @param {string[]} autoitIncludePaths - Only used on first call, ignored on subsequent calls unless updateConfiguration() is called
-   * @param {number} maxIncludeDepth - Only used on first call, ignored on subsequent calls unless updateConfiguration() is called
+   * @param {string} [workspaceRoot] - Only used on first call, ignored on subsequent calls unless updateConfiguration() is called
+   * @param {string[]} [autoitIncludePaths] - Only used on first call, ignored on subsequent calls unless updateConfiguration() is called
+   * @param {number} [maxIncludeDepth] - Only used on first call, ignored on subsequent calls unless updateConfiguration() is called
    * @returns {MapTrackingService}
    * @note Parameters are only used during initial instantiation. To update configuration
    *       after initialization, use updateConfiguration() method.
@@ -84,13 +123,77 @@ class MapTrackingService {
   }
 
   /**
-   * Update parsed data for a file
+   * Update parsed data for a file (immediate, no debouncing)
    * @param {string} filePath - Absolute file path
    * @param {string} source - File source code
    */
   updateFile(filePath, source) {
     const parser = new MapParser(source);
     this.fileParsers.set(filePath, parser);
+  }
+
+  /**
+   * Update file with debouncing
+   * @param {string} filePath - Absolute file path
+   * @param {string} source - File source code
+   */
+  updateFileDebounced(filePath, source) {
+    // Get or create debounced parser for this file
+    if (!this.debouncedParseByFile.has(filePath)) {
+      this.debouncedParseByFile.set(
+        filePath,
+        debounce((path, src) => {
+          this._parseFile(path, src);
+        }, this.parseDebounceMs),
+      );
+    }
+
+    // Store pending parse data
+    this.pendingParses.set(filePath, { source, timestamp: Date.now() });
+
+    // Trigger debounced parse
+    const debouncedParse = this.debouncedParseByFile.get(filePath);
+    debouncedParse(filePath, source);
+  }
+
+  /**
+   * Update file immediately without debouncing (for file open)
+   * @param {string} filePath - Absolute file path
+   * @param {string} source - File source code
+   */
+  updateFileImmediate(filePath, source) {
+    // Cancel any pending debounced parse
+    if (this.debouncedParseByFile.has(filePath)) {
+      const debouncedParse = this.debouncedParseByFile.get(filePath);
+      if (debouncedParse.cancel) {
+        debouncedParse.cancel();
+      }
+    }
+
+    this._parseFile(filePath, source);
+  }
+
+  /**
+   * Internal method to parse file (called after debounce)
+   * @param {string} filePath - Absolute file path
+   * @param {string} source - File source code
+   * @private
+   */
+  _parseFile(filePath, source) {
+    // Prevent duplicate parsing
+    if (this.ongoingParses.has(filePath)) {
+      return;
+    }
+
+    this.ongoingParses.add(filePath);
+
+    try {
+      const parser = new MapParser(source);
+      this.fileParsers.set(filePath, parser);
+    } finally {
+      this.ongoingParses.delete(filePath);
+      this.pendingParses.delete(filePath);
+    }
   }
 
   /**

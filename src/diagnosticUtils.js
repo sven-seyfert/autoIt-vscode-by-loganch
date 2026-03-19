@@ -22,19 +22,19 @@ export const getDiagnosticSeverity = severityString => {
  */
 export const createDiagnosticRange = (line, position) => {
   // Coerce inputs to integers in a robust, predictable way.
-  const parsedLine =
-    typeof line === 'string'
-      ? parseInt(line, 10)
-      : typeof line === 'number'
-        ? Math.floor(Number(line))
-        : NaN;
+  let parsedLine = NaN;
+  if (typeof line === 'string') {
+    parsedLine = parseInt(line, 10);
+  } else if (typeof line === 'number') {
+    parsedLine = Math.floor(Number(line));
+  }
 
-  const parsedPosition =
-    typeof position === 'string'
-      ? parseInt(position, 10)
-      : typeof position === 'number'
-        ? Math.floor(Number(position))
-        : NaN;
+  let parsedPosition = NaN;
+  if (typeof position === 'string') {
+    parsedPosition = parseInt(position, 10);
+  } else if (typeof position === 'number') {
+    parsedPosition = Math.floor(Number(position));
+  }
 
   // Convert to zero-based numbers and fall back to 0 for invalid values.
   const lineNum =
@@ -100,6 +100,10 @@ const pathsReferToSameFile = (a, b) => {
   return na.toLowerCase() === nb.toLowerCase();
 };
 
+// ASCII printable range boundaries (space to tilde)
+const ASCII_PRINTABLE_START = 0x20;
+const ASCII_PRINTABLE_END = 0x7e;
+
 /**
  * Detect presence of non-ASCII characters that may trigger AU3Check encoding issues.
  * Returns true if any character is outside the 0x20-0x7E printable ASCII range.
@@ -108,7 +112,7 @@ const hasSpecialCharacters = p => {
   if (!p) return false;
   return Array.from(p).some(char => {
     const code = char.charCodeAt(0);
-    return code < 0x20 || code > 0x7e;
+    return code < ASCII_PRINTABLE_START || code > ASCII_PRINTABLE_END;
   });
 };
 

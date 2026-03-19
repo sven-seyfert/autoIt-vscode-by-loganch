@@ -1,7 +1,8 @@
 import { languages, window, workspace } from 'vscode';
-import { dirname } from 'path';
+import { basename, dirname, sep } from 'path';
 import { existsSync } from 'fs';
 import { execFile } from 'child_process';
+import { FORMATTER, DEFAULT_MAX_INCLUDE_DEPTH } from './constants';
 import languageConfiguration from './languageConfiguration';
 import hoverFeature from './ai_hover';
 import completionFeature from './ai_completion';
@@ -15,6 +16,7 @@ import { formatterProvider } from './ai_formatter';
 import { clearDiagnosticsOwnedBy, parseAu3CheckOutput } from './diagnosticUtils';
 import conf from './ai_config';
 import MapTrackingService from './services/MapTrackingService.js';
+import VariableTrackingService from './services/VariableTrackingService.js';
 
 const { config } = conf;
 
@@ -84,7 +86,14 @@ const runCheckProcess = document => {
       consoleOutput += data.toString();
     });
 
-    checkProcess.stderr.on('error', error => {
+    checkProcess.stderr.on('data', data => {
+      if (!data || data.length === 0) {
+        return;
+      }
+      console.error(`[AutoIt][extension] Au3Check stderr: ${data.toString()}`);
+    });
+
+    checkProcess.on('error', error => {
       reject(error);
     });
 
@@ -95,7 +104,8 @@ const runCheckProcess = document => {
 };
 
 const handleCheckProcessError = error => {
-  window.showErrorMessage(`${config.checkPath} ${error}`);
+  const message = error?.message ?? String(error);
+  window.showErrorMessage(`${config.checkPath} ${message}`);
 };
 
 const validateCheckPath = checkPath => {
@@ -132,6 +142,28 @@ const validateFormatterPaths = () => {
 };
 
 /**
+ * Checks if a document should be ignored by diagnostics (AutoIt Tidy backup files)
+ * @param {import('vscode').TextDocument} document - Document to check
+ * @returns {boolean} True if document should be ignored
+ */
+const shouldIgnoreDiagnostics = document => {
+  const filePath = document.uri.fsPath;
+  const fileName = basename(filePath);
+
+  // Ignore files in "BackUp" folder
+  if (filePath.includes(sep + FORMATTER.BACKUP_DIR_NAME + sep)) {
+    return true;
+  }
+
+  // Ignore *_old*.au3 files
+  if (FORMATTER.BACKUP_FILE_SUFFIX_PATTERN.test(fileName)) {
+    return true;
+  }
+
+  return false;
+};
+
+/**
  * Checks the AutoIt code in the given document and updates the diagnostic collection.
  * @param {import('vscode').TextDocument} document - The document to check.
  * @param {import('vscode').DiagnosticCollection} diagnosticCollection - The diagnostic collection to update.
@@ -143,6 +175,12 @@ const checkAutoItCode = async (document, diagnosticCollection) => {
   }
 
   if (document.languageId !== 'autoit') return;
+
+  // Ignore backup files from AutoIt Tidy
+  if (shouldIgnoreDiagnostics(document)) {
+    diagnosticCollection.delete(document.uri);
+    return;
+  }
 
   const { checkPath } = config;
   if (!validateCheckPath(checkPath)) return;
@@ -181,9 +219,16 @@ export const activate = ctx => {
   const workspaceRoot = workspace.workspaceFolders?.[0]?.uri.fsPath || '';
   const autoitConfig = workspace.getConfiguration('autoit');
   const autoitIncludePaths = autoitConfig.get('includePaths', []);
-  const maxIncludeDepth = autoitConfig.get('maps.includeDepth', 3);
+  const maxIncludeDepth = autoitConfig.get('maps.includeDepth', DEFAULT_MAX_INCLUDE_DEPTH);
 
   const mapTrackingService = MapTrackingService.getInstance(
+    workspaceRoot,
+    autoitIncludePaths,
+    maxIncludeDepth,
+  );
+
+  // Initialize VariableTrackingService
+  const variableTrackingService = VariableTrackingService.getInstance(
     workspaceRoot,
     autoitIncludePaths,
     maxIncludeDepth,
@@ -203,6 +248,7 @@ export const activate = ctx => {
     // Set new timer for this document
     const timer = setTimeout(() => {
       mapTrackingService.updateFile(filePath, document.getText());
+      variableTrackingService.updateFileDebounced(filePath, document.getText());
       updateTimers.delete(filePath); // Clean up after execution
     }, DEBOUNCE_DELAY);
 
@@ -214,6 +260,13 @@ export const activate = ctx => {
     workspace.onDidOpenTextDocument(document => {
       if (document.languageId === 'autoit') {
         mapTrackingService.updateFile(document.uri.fsPath, document.getText());
+        try {
+          variableTrackingService.updateFileImmediate(document.uri.fsPath, document.getText());
+        } catch (error) {
+          console.error(
+            `[AutoIt][extension] Failed to update variable tracking for file: ${document.uri.fsPath}. Error: ${error.message}`,
+          );
+        }
       }
     }),
   );
@@ -238,6 +291,13 @@ export const activate = ctx => {
         }
 
         mapTrackingService.updateFile(filePath, document.getText());
+        try {
+          variableTrackingService.updateFileImmediate(filePath, document.getText());
+        } catch (error) {
+          console.error(
+            `[AutoIt][extension] Failed to update variable tracking for file: ${filePath}. Error: ${error.message}`,
+          );
+        }
       }
     }),
   );
@@ -254,8 +314,9 @@ export const activate = ctx => {
           updateTimers.delete(filePath);
         }
 
-        // Note: We keep the file in cache for includes
+        // Note: We keep the files in cache for includes
         // mapTrackingService.removeFile(filePath);
+        // variableTrackingService.removeFile(filePath);
       }
     }),
   );
@@ -264,6 +325,13 @@ export const activate = ctx => {
   workspace.textDocuments.forEach(document => {
     if (document.languageId === 'autoit') {
       mapTrackingService.updateFile(document.uri.fsPath, document.getText());
+      try {
+        variableTrackingService.updateFileImmediate(document.uri.fsPath, document.getText());
+      } catch (error) {
+        console.error(
+          `[AutoIt][extension] Failed to update variable tracking for file: ${document.uri.fsPath}. Error: ${error.message}`,
+        );
+      }
     }
   });
 
@@ -277,13 +345,33 @@ export const activate = ctx => {
         const updatedWorkspaceRoot = workspace.workspaceFolders?.[0]?.uri.fsPath || '';
         const updatedConfig = workspace.getConfiguration('autoit');
         const updatedIncludePaths = updatedConfig.get('includePaths', []);
-        const updatedMaxDepth = updatedConfig.get('maps.includeDepth', 3);
+        const updatedMaxDepth = updatedConfig.get('maps.includeDepth', DEFAULT_MAX_INCLUDE_DEPTH);
 
-        mapTrackingService.updateConfiguration(
-          updatedWorkspaceRoot,
-          updatedIncludePaths,
-          updatedMaxDepth,
-        );
+        try {
+          mapTrackingService.updateConfiguration(
+            updatedWorkspaceRoot,
+            updatedIncludePaths,
+            updatedMaxDepth,
+          );
+        } catch (error) {
+          console.error(
+            `[AutoIt][extension] Failed to update MapTrackingService configuration for workspace: ${updatedWorkspaceRoot}. Config changed: includePaths or maps.includeDepth. Error: ${error.message}`,
+          );
+          // Continue execution - the service will keep using previous configuration
+        }
+
+        try {
+          variableTrackingService.updateConfiguration(
+            updatedWorkspaceRoot,
+            updatedIncludePaths,
+            updatedMaxDepth,
+          );
+        } catch (error) {
+          console.error(
+            `[AutoIt][extension] Failed to update VariableTrackingService configuration for workspace: ${updatedWorkspaceRoot}. Config changed: includePaths or maps.includeDepth. Error: ${error.message}`,
+          );
+          // Continue execution - the service will keep using previous configuration
+        }
       }
     }),
   );

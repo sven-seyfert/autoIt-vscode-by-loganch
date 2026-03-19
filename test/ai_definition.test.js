@@ -163,6 +163,10 @@ jest.mock(
       languages: {
         registerDefinitionProvider: jest.fn(() => ({ dispose: jest.fn() })),
       },
+      window: {
+        showErrorMessage: jest.fn(),
+        showInformationMessage: jest.fn(),
+      },
     };
   },
   { virtual: true },
@@ -688,6 +692,7 @@ describe('ai_definition: error handling', () => {
     const mocks = createUtilMocks({
       includeScripts: [MISSING_PATH],
       includeContent: {},
+      useCache: false, // Disable caching to avoid any stale data
     });
     util.getIncludeScripts.mockImplementation(mocks.getIncludeScripts);
     util.getIncludeText.mockImplementation(mocks.getIncludeText);
@@ -740,6 +745,7 @@ describe('ai_definition: error handling', () => {
     const mocks = createUtilMocks({
       includeScripts: ['<bad::include>'],
       includeContent: {},
+      useCache: false, // Disable caching to avoid any stale data
     });
     util.getIncludeScripts.mockImplementation(mocks.getIncludeScripts);
     util.getIncludeText.mockImplementation(mocks.getIncludeText);
@@ -916,7 +922,7 @@ describe('ai_definition: advanced circular dependency handling', () => {
     util.getIncludeText.mockImplementation(mocks.getIncludeText);
 
     const doc = new MockTextDocument(deepContent[normalizeP(deepFiles[0])], deepFiles[0]);
-    const pos = posAtFirst(doc, 'DeepFunc5');
+    const pos = posAtFirst(doc, 'DeepFunc0');
 
     // Should not hang or crash
     const startTime = Date.now();

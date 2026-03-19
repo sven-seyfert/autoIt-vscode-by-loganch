@@ -14,10 +14,10 @@ export default class IncludeResolver {
   /**
    * Parse include directives from source
    * @param {string} source - AutoIt source code
-   * @param {string} currentFile - Path to current file
+   * @param {string} _currentFile - Path to current file
    * @returns {Array<{type: string, path: string, line: number}>}
    */
-  parseIncludes(source, currentFile) {
+  parseIncludes(source, _currentFile) {
     const includes = [];
     const lines = source.split('\n');
 
@@ -36,7 +36,7 @@ export default class IncludeResolver {
         includes.push({
           type: bracket === '<' ? 'library' : 'relative',
           path: includePath,
-          line: index
+          line: index,
         });
       }
     });

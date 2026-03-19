@@ -1,4 +1,5 @@
 import {
+  DocumentSymbol,
   Location,
   Range,
   SymbolInformation,
@@ -15,6 +16,8 @@ import {
   regionPattern,
   variablePattern,
 } from './util';
+import { DEFAULT_MAX_INCLUDE_DEPTH } from './constants';
+import MapTrackingService from './services/MapTrackingService.js';
 const config = workspace.getConfiguration('autoit');
 const commentEndRegex = /^\s*#(?:ce|comments-end)/;
 const commentStartRegex = /^\s*#(?:cs|comments-start)/;
@@ -247,15 +250,31 @@ function getVariableKind(text) {
  * Determines whether a variable should be skipped or not based on certain conditions.
  *
  * @param {string} variable - The variable to check.
+ * @param {string} lineText - The full line text to check for Map declarations.
  * @returns {boolean} - A boolean value indicating whether the variable should be skipped or not.
  *
  * @example
  * const variable = 'someVariable';
- * const shouldSkip = shouldSkipVariable(variable);
+ * const shouldSkip = shouldSkipVariable(variable, line.text);
  * console.log(shouldSkip); // true or false
  */
-function shouldSkipVariable(variable) {
-  return AI_CONSTANTS.includes(variable) || delims.includes(variable.charAt(0));
+function shouldSkipVariable(variable, lineText = '') {
+  // Skip constants and delimiter-prefixed variables
+  if (AI_CONSTANTS.includes(variable) || delims.includes(variable.charAt(0))) {
+    return true;
+  }
+
+  // Skip Map declarations (variables followed by [])
+  // Pattern: Local/Global/Dim/Static $var[]
+  const mapDeclPattern = new RegExp(
+    `(Local|Global|Dim|Static)\\s+${variable.replace(/\$/g, '\\$')}\\s*\\[\\s*\\]`,
+    'i',
+  );
+  if (mapDeclPattern.test(lineText)) {
+    return true;
+  }
+
+  return false;
 }
 
 function addVariableToResults(result, variable, variableKind, doc, line, container) {
@@ -299,7 +318,7 @@ function parseVariablesFromText(params) {
   for (let i = 0; i < variables.length; i += 1) {
     const variable = variables[i];
 
-    if (shouldSkipVariable(variable)) {
+    if (shouldSkipVariable(variable, text)) {
       continue;
     }
 
@@ -317,14 +336,214 @@ function parseVariablesFromText(params) {
 }
 
 /**
+ * Create DocumentSymbol array for Map keys (flat, single-level)
+ * @param {import('vscode').TextDocument} doc - The document
+ * @param {Array} keysArray - Array of key objects {key, line, isDynamic}
+ * @param {string} containerName - Parent Map variable name
+ * @returns {Array<import('vscode').DocumentSymbol>}
+ */
+function createKeySymbols(doc, keysArray, containerName) {
+  const keySymbols = [];
+
+  // Sort keys by line number (order of first appearance)
+  const sortedKeys = keysArray.sort((a, b) => a.line - b.line);
+
+  sortedKeys.forEach(keyInfo => {
+    const { key, line, isDynamic } = keyInfo;
+
+    // Format key display
+    const displayKey = isDynamic ? `[${key}]` : `"${key}"`;
+
+    // Find the key string in the source line
+    const sourceLine = doc.lineAt(line);
+    const lineText = sourceLine.text;
+
+    // Find key position in line
+    let keyStart = 0;
+    let keyEnd = lineText.length;
+
+    if (isDynamic) {
+      // Dynamic key: find variable name
+      const varMatch = lineText.indexOf(key);
+      if (varMatch !== -1) {
+        keyStart = varMatch;
+        keyEnd = varMatch + key.length;
+      }
+    } else {
+      // Static key: find quoted string or dot notation
+      // Try to find the key in bracket notation first
+      const quotedPattern = new RegExp(`["']${key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}["']`);
+      const match = lineText.match(quotedPattern);
+      if (match) {
+        keyStart = lineText.indexOf(match[0]) + 1; // Skip opening quote
+        keyEnd = keyStart + key.length;
+      } else {
+        // Try dot notation
+        const dotPattern = new RegExp(`\\.${key}\\s*=`);
+        const dotMatch = lineText.match(dotPattern);
+        if (dotMatch) {
+          const dotIndex = lineText.indexOf(dotMatch[0]);
+          keyStart = dotIndex + 1; // Skip the dot
+          keyEnd = keyStart + key.length;
+        }
+      }
+    }
+
+    const keyRange = new Range(line, keyStart, line, keyEnd);
+
+    // Create key DocumentSymbol (flat, no children)
+    const keySymbol = new DocumentSymbol(
+      displayKey,
+      containerName,
+      SymbolKind.Key,
+      keyRange,
+      keyRange,
+    );
+
+    keySymbols.push(keySymbol);
+  });
+
+  return keySymbols;
+}
+
+/**
+ * Create DocumentSymbol for Map variable with key children
+ * @param {import('vscode').TextDocument} doc - The document
+ * @param {object} mapDeclaration - Map declaration info from MapParser
+ * @param {object} keysData - Flat keys from MapTrackingService
+ * @param {object} parser - MapParser instance to get assignment details
+ * @returns {import('vscode').DocumentSymbol}
+ */
+function createMapSymbols(doc, mapDeclaration, keysData, parser) {
+  const { name, line } = mapDeclaration;
+
+  // Create parent Map symbol
+  const mapLine = doc.lineAt(line);
+  const mapRange = mapLine.range;
+  const mapSymbol = new DocumentSymbol(name, 'Map', SymbolKind.Variable, mapRange, mapRange);
+
+  // Get all assignments to find line numbers
+  const assignments = parser.parseKeyAssignments(name);
+  const keyLineMap = new Map();
+  assignments.forEach(assign => {
+    keyLineMap.set(assign.key, { line: assign.line, isDynamic: assign.isDynamic });
+  });
+
+  // Combine direct keys and function keys into flat array with line numbers
+  const allKeys = [];
+
+  keysData.directKeys.forEach(key => {
+    const info = keyLineMap.get(key);
+    if (info) {
+      allKeys.push({ key, line: info.line, isDynamic: info.isDynamic });
+    }
+  });
+
+  keysData.functionKeys.forEach(fkey => {
+    const info = keyLineMap.get(fkey.key);
+    if (info) {
+      allKeys.push({ key: fkey.key, line: info.line, isDynamic: info.isDynamic });
+    }
+  });
+
+  // Add key children
+  mapSymbol.children = createKeySymbols(doc, allKeys, name);
+
+  return mapSymbol;
+}
+
+/**
+ * Convert SymbolInformation array to DocumentSymbol array
+ * @param {Array<SymbolInformation>} symbolInfoArray - Array of SymbolInformation
+ * @returns {Array<DocumentSymbol>} Array of DocumentSymbol
+ */
+function convertToDocumentSymbols(symbolInfoArray) {
+  const documentSymbols = [];
+  const functionMap = new Map(); // Track function symbols for nesting variables
+
+  // First pass: convert all symbols and identify functions
+  symbolInfoArray.forEach(symbolInfo => {
+    const { name, kind, containerName, location } = symbolInfo;
+    const { range } = location;
+
+    const docSymbol = new DocumentSymbol(name, containerName || '', kind, range, range);
+
+    // Track functions for potential nesting
+    if (kind === SymbolKind.Function) {
+      functionMap.set(name, docSymbol);
+    }
+
+    // If this symbol has a container and it's a function, add as child
+    if (containerName && functionMap.has(containerName)) {
+      const parentFunction = functionMap.get(containerName);
+      if (!parentFunction.children) {
+        parentFunction.children = [];
+      }
+      parentFunction.children.push(docSymbol);
+    } else {
+      // Top-level symbol
+      documentSymbols.push(docSymbol);
+    }
+  });
+
+  return documentSymbols;
+}
+
+/**
+ * Add Map variable symbols to results
+ * @param {import('vscode').TextDocument} doc - The document
+ * @param {Array} result - Array to add symbols to
+ */
+async function addMapSymbols(doc, result) {
+  try {
+    // Get AutoIt configuration
+    const autoitConfig = workspace.getConfiguration('autoit');
+    const { workspaceFolders } = workspace;
+    const workspaceRoot =
+      workspaceFolders && workspaceFolders.length > 0 ? workspaceFolders[0].uri.fsPath : '';
+    const includePaths = autoitConfig.get('includePaths', []);
+    const includeDepth = autoitConfig.get('maps.includeDepth', DEFAULT_MAX_INCLUDE_DEPTH);
+
+    // Get MapTrackingService instance
+    const mapService = MapTrackingService.getInstance(workspaceRoot, includePaths, includeDepth);
+
+    // Update file in service (immediate, not debounced for document symbols)
+    const filePath = doc.uri.fsPath;
+    const source = doc.getText();
+    mapService.updateFileImmediate(filePath, source);
+
+    // Get Map declarations from the current file's parser
+    const parser = mapService.fileParsers.get(filePath);
+    if (!parser) return;
+
+    const mapDeclarations = parser.parseMapDeclarations();
+
+    // Create symbols for each Map
+    for (const mapDecl of mapDeclarations) {
+      const keysData = await mapService.getKeysForMapWithIncludes(filePath, mapDecl.name, Infinity);
+
+      const mapSymbol = createMapSymbols(doc, mapDecl, keysData, parser);
+      result.push(mapSymbol);
+    }
+  } catch (error) {
+    // Log error but don't break symbol generation
+    console.error('[AutoIt] Error generating Map symbols:', error);
+
+    // Log to output channel for debugging
+    const outputChannel = window.createOutputChannel('AutoIt');
+    outputChannel.appendLine(`Error generating Map symbols: ${error.message}`);
+  }
+}
+
+/**
  * Provides the document symbols for a given document.
  * It parses the text of the document line by line and extracts information about functions, variables, and regions.
  * Returns an array of symbol information objects.
  *
  * @param {import("vscode").TextDocument} doc - The document for which to provide symbols.
- * @returns {Array} An array of symbol information objects, each containing the name, kind, and range of a symbol in the document.
+ * @returns {Promise<Array>} A promise that resolves to an array of symbol information objects, each containing the name, kind, and range of a symbol in the document.
  */
-function provideDocumentSymbols(doc) {
+async function provideDocumentSymbols(doc) {
   const result = [];
   const processedSymbols = new Set();
   let inComment = false;
@@ -382,6 +601,18 @@ function provideDocumentSymbols(doc) {
     if (commentStartRegex.test(lineText)) {
       inComment = true;
     }
+  }
+
+  // Add Map symbols if Map intelligence is enabled
+  const mapConfig = workspace.getConfiguration('autoit.maps');
+  const enableMapIntelligence = mapConfig.get('enableIntelligence', true);
+
+  if (enableMapIntelligence) {
+    // When Map intelligence is enabled, convert all SymbolInformation to DocumentSymbol
+    // to support hierarchical Map keys
+    const documentSymbols = convertToDocumentSymbols(result);
+    await addMapSymbols(doc, documentSymbols);
+    return documentSymbols;
   }
 
   return result;
